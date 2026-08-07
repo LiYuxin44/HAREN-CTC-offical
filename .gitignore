@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Experiment outputs
+logs_fixed_split_BCE_high_dropout_CTC005_3stra*/
+queue_logs_*/
+*.log
+*.csv
+
+# Processed data / large artifacts
+processed_data-*/
+*.wav
+*.label
+*.phq_label
+*.pt
+*.ckpt
+
+# Hugging Face cache
+hf_cache/
+.cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
