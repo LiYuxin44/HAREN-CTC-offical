@@ -1,173 +1,215 @@
-# Reproducing HAREN-CTC
+# Reproducing the reported results
 
-This document lists every setting needed to reproduce the results, and the exact
-commands for the main result and each ablation. All commands assume you are in
-the repository root and have run `data_preparation/preprocess.py` (see the
-[README](../README.md)).
+Commands assume the repository root as the working directory. Generated audio,
+manifests, checkpoints, predictions, and result tables are intentionally not
+versioned.
 
----
-
-## 1. Data splits
-
-- **Corpus:** DAIC-WOZ (audio + turn-level transcripts).
-- **Split:** the **official AVEC-2017** partition — no re-splitting, no k-fold.
-  A subject appears in exactly one of train / dev(val) / test.
-  - `train` ← `train_split_Depression_AVEC2017.csv`
-  - `val`   ← `dev_split_Depression_AVEC2017.csv`
-  - `test`  ← full test split CSV (`full_test_split.csv`)
-- **Subject-level leakage check:** the training script asserts there is **no
-  subject overlap** across train/val/test before training starts and aborts if
-  any is found.
-- **Utterance sampling (per subject):**
-  - train: 18 longest turns if `PHQ8_Binary==0`, 46 longest if `==1`
-  - val / test: 20 longest turns
-  - turns `< 1.0 s` dropped; segments are cut from the original 16 kHz audio.
-- **Reference clip counts** (no-offset variant): train ≈ 2794, val ≈ 700,
-  test ≈ 940 utterances. Small differences are possible depending on your copy
-  of DAIC-WOZ.
-- **Two preprocessing variants:**
-  - **no-offset (canonical, headline results):** `preprocess.py` default.
-  - **offset (ablation):** add `--offset` to apply four transcript timestamp
-    corrections — subjects 318 (+34.0 s), 321 (+3.355 s), 341 (+6.07 s),
-    362 (+16.54 s).
-
----
-
-## 2. Fixed hyper-parameters
-
-| hyper-parameter | value | where set |
-|-----------------|-------|-----------|
-| learning rate | **1e-5** | `LR` env (default) |
-| optimizer | AdamW | `create_opt()` |
-| **weight decay** | **1e-4** | `create_opt()` |
-| classification loss | `BCEWithLogitsLoss` | `criterion` |
-| CTC loss | `nn.CTCLoss(blank=20, zero_infinity=True)` | `ctc_loss_fn` |
-| total loss | `cls + ctc_weight · warmup · ctc` | training loop |
-| `ctc_weight` | 0.05 | `WavLMClassificationModel(ctc_weight=0.05)` |
-| CTC warmup | linear over first **5** epochs (`CTC_WARMUP_EPOCHS`) | training loop |
-| CTC classes | `2k+1 = 21`, `k=10`, blank index 20 | model + loss |
-| CTC targets | HuBERT-large layer 12, online per-utterance k-means (k=10), run-length collapsed, `+k` token shift for depressed class | `generate_hubert_policy_targets_online` |
-| dropout | 0.5 | `DROPOUT` |
-| layer groups | 2, exponential init, α=0.95 | `AdaptiveWeightedPool` |
-| co-attention heads | 2 | `CoAttentionModule` |
-| batch size | 16 | `BATCH_SIZE` env |
-| epochs | 15, **no early stopping** | `NUM_EPOCHS` env |
-| max clip length | 10.0 s (random crop train / head crop eval) | `AudioDataset(max_sec=10.0)` |
-| mixed precision | AMP (`torch.cuda.amp`) | training loop |
-| class balancing | `WeightedRandomSampler` seeded per run (disable with `NO_SAMPLER=1`) | training loop |
-| backbone | `microsoft/wavlm-large`, frozen weights + eval mode + all stochastic ops zeroed | `_freeze_wavlm_backbone()` |
-
-### Seeds
-
-The five paper seeds (fixed via `random`, `numpy`, `torch`,
-`torch.cuda`, `cudnn.deterministic=True`, `cudnn.benchmark=False`):
-
-```
-123, 1234, 12345, 123456, 1234567
-```
-
-Every metric is reported as **mean ± sd over these 5 seeds** (`ddof=1`),
-computed at the best test epoch per seed and written to
-`log_fixed_split_summary.csv`.
-
----
-
-## 3. Main result
-
-No-offset data, LR 1e-5, class-balanced sampler, 5 seeds, 15 epochs:
+## 1. Environment
 
 ```bash
-python scripts/run_experiments.py \
-    --data-root ./processed_data-utterance-fixed-split-nooffset \
-    --gpu 0 --run-tag main
+conda create -n haren-ctc python=3.12 -y
+conda activate haren-ctc
+pip install torch==2.7.0 torchaudio==2.7.0 \
+  --index-url https://download.pytorch.org/whl/cu126
+pip install -r requirements.txt
 ```
 
-Raw equivalent:
+Install `ffmpeg` separately for audio preprocessing. The reference WavLM
+revision used by the PHQ-balanced runs is
+`c1423ed94bb01d80a3f5ce5bc39f6026a0f4828c`.
+
+## 2. Label and data invariants
+
+Expected AVEC-2017 metadata:
+
+| source split | subjects |
+|---|---:|
+| train | 107 |
+| dev | 35 |
+| test | 47 |
+| total | 189 |
+
+The label files must provide `Participant_ID`, `PHQ8_Binary`, and
+`PHQ8_Score`. The preprocessing code enforces:
+
+- unique participants and disjoint official splits;
+- `PHQ8_Binary == (PHQ8_Score >= 10)`;
+- corrected binary label 1 for participant 409;
+- contiguous clip IDs and matching `.label` / `.phq_label` sidecars;
+- 18 train clips for a negative subject, 46 for a positive subject, and
+  20 evaluation clips per subject.
+
+## 3. Official fixed split
+
+Build the corrected no-offset data:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 \
-DATA_ROOT=./processed_data-utterance-fixed-split-nooffset \
-SEEDS=123,1234,12345,123456,1234567 \
-NUM_EPOCHS=15 BATCH_SIZE=16 LR=1e-5 RUN_TAG=main \
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-python -u src/train_haren_ctc.py
+python data_preparation/preprocess.py \
+  --audio-dir /path/to/DAIC/wav_files \
+  --trans-dir /path/to/DAIC/transcripts \
+  --label-dir /path/to/DAIC/labels \
+  --out-root ./datasets/fixed_corrected_nooffset
 ```
 
-Read the summary:
+The reported BCE-only winner uses:
+
+- seeds `123, 1234, 12345, 123456, 1234567`;
+- learning rate `1e-5`;
+- batch size `16`;
+- weight decay `1e-5`;
+- dropout `0.1`;
+- 15 epochs;
+- the legacy preprocessing/crop/AdamW defaults;
+- checkpoint selection on dev Macro-F1, then dev AUC, F1(pos),
+  sensitivity, and earlier epoch;
+- subject probability equal to the mean utterance probability.
+
+Train one isolated run per seed:
 
 ```bash
-cat logs_fixed_split_BCE_high_dropout_CTC005_3stra_main/log_fixed_split_summary.csv
-```
-
----
-
-## 4. Ablations
-
-Each ablation just changes a flag / env var; everything else stays fixed.
-
-### 4.1 Learning-rate sweep (with sampler disabled)
-
-```bash
-for lr in 5e-6 3e-6 1e-5; do
+for seed in 123 1234 12345 123456 1234567; do
   python scripts/run_experiments.py \
-      --data-root ./processed_data-utterance-fixed-split-nooffset \
-      --lr $lr --no-sampler --run-tag lr${lr}_nos
+    --data-root ./datasets/fixed_corrected_nooffset \
+    --gpu 0 --seeds "$seed" --epochs 15 \
+    --lr 1e-5 --batch-size 16 --weight-decay 1e-5 --dropout 0.1 \
+    --ctc-enabled 0 --test-policy none \
+    --run-tag "fixed_seed${seed}" \
+    --output-dir "./runs/fixed/seed${seed}"
 done
 ```
 
-### 4.2 No class-balancing sampler
+Training must use `--test-policy none`; no official-test loader is constructed.
+After all choices are frozen, create a checkpoint index with these columns:
 
-```bash
-python scripts/run_experiments.py \
-    --data-root ./processed_data-utterance-fixed-split-nooffset \
-    --no-sampler --run-tag main_nosampler
+```text
+variant,seed,checkpoint_path,data_root,learning_rate,batch_size,
+weight_decay,dropout,ctc_enabled
 ```
 
-### 4.3 Offset vs. no-offset preprocessing
+Evaluate each frozen checkpoint once:
 
 ```bash
-# build the offset variant once
-python data_preparation/preprocess.py \
-    --audio-dir /path/to/DAIC/wav_files --trans-dir /path/to/DAIC/transcripts \
-    --label-dir /path/to/DAIC/labels \
-    --out-root ./processed_data-utterance-fixed-split --offset
-
-# train on it
-python scripts/run_experiments.py \
-    --data-root ./processed_data-utterance-fixed-split \
-    --run-tag offset
+python scripts/eval_checkpoints.py \
+  --checkpoint-index ./checkpoint_index.csv \
+  --output-root ./results/fixed
 ```
 
-### 4.4 Synthetic data augmentation (optional)
+The five official-test runs give:
 
-Merge an extra flat directory of synthetic 16 kHz train wavs (each with
-matching `.label` / `.phq_label` sidecars) into the training set only. Because
-the synthetic set is already class-balanced, pair it with `--no-sampler`:
+- Macro-F1 `0.5764 ± 0.0361`;
+- ROC-AUC `0.5281 ± 0.0536`.
+
+These are mean ± sample SD across seeds at subject threshold 0.5, with no
+ensemble.
+
+## 4. PHQ-balanced 5-fold protocol
+
+This protocol pools the official train, dev, and test subjects. It is internal
+cross-validation over all 189 participants, not an independent official-test
+evaluation.
+
+Build one outer assignment stratified over PHQ-8 bins `0–4`, `5–9`, `10–14`,
+`15–19`, and `20–24`. The published run uses the timestamp-offset variant:
 
 ```bash
-python scripts/run_experiments.py \
-    --data-root ./processed_data-utterance-fixed-split-nooffset \
-    --cdoa-train-dir /path/to/synthetic_16k \
-    --no-sampler --run-tag aug
+python data_preparation/prepare_phq_stratified_train_test.py \
+  --audio-dir /path/to/DAIC/wav_files \
+  --trans-dir /path/to/DAIC/transcripts \
+  --label-dir /path/to/DAIC/labels \
+  --offset --seed 123 \
+  --out-root ./datasets/phq5
 ```
 
-### 4.5 Single-seed smoke test
+Expected total bin counts are `86, 46, 30, 20, 7`. For each bin, outer-fold
+counts differ by at most one. The script also writes an audited inner-dev
+partition, although the reported model trains on each fold's combined
+train+dev subjects.
 
-Fast sanity check (1 seed, 2 epochs) before launching a full run:
+Run the exact ten-seed BCE-only matrix:
 
 ```bash
-python scripts/run_experiments.py \
-    --data-root ./processed_data-utterance-fixed-split-nooffset \
-    --seeds 1234 --epochs 2 --run-tag smoke
+python scripts/run_phq_balanced_cv.py \
+  --manifest-root ./datasets/phq5 \
+  --output-root ./runs/phq5
 ```
 
----
+The seeds are:
 
-## 5. Determinism caveats
+```text
+1234, 12345, 123456, 1234567, 12345678,
+2024, 2025, 2026, 2027, 2028
+```
 
-Runs are seeded and `cudnn.deterministic=True`, but bit-exact reproducibility
-across different GPUs, CUDA/cuDNN versions, or PyTorch builds is not guaranteed
-(AMP, non-deterministic CUDA kernels, and driver differences). Expect the
-reported mean ± sd to match within noise, not to the last decimal. The reference
-environment: Python 3.12, PyTorch 2.7.0+cu126, transformers 4.57.6, single
-NVIDIA V100.
+The runner fixes the relevant configuration:
+
+| item | value |
+|---|---|
+| epochs | 15 |
+| learning rate | `1e-4` |
+| batch size | 16 |
+| weight decay | `1e-5` |
+| dropout | 0.3 |
+| loss | BCE only |
+| WavLM mask | true length |
+| waveform normalization | valid audio first, then pad |
+| train crop | deterministic epoch-keyed |
+| optimizer | no-decay AdamW groups, warmup + cosine |
+| evaluation views | head / center / tail (`multi3`) |
+| subject aggregation | mean probability |
+| threshold | 0.5 |
+| ensemble | none |
+
+The command evaluates held-out folds at all 15 epochs so the historical
+post-hoc selection can be reproduced. The repository has one and only one
+reported 5-fold convention: one shared epoch is selected across all ten seeds,
+and that epoch is fixed to 14 in the summarizer.
+
+```bash
+python scripts/summarize_phq_balanced_cv.py \
+  --manifest-root ./datasets/phq5 \
+  --runs-root ./runs/phq5 \
+  --output-root ./results/phq5
+```
+
+The result is:
+
+- Macro-F1 `0.5537 ± 0.0225`;
+- ROC-AUC `0.5412 ± 0.0177`.
+
+Aggregation is performed in this order:
+
+1. average utterance probabilities within subject;
+2. concatenate the five held-out folds to obtain 189 OOF subjects per seed;
+3. compute metrics once per seed;
+4. report the mean and sample SD across ten seeds.
+
+Epoch 14 was chosen using these same held-out trajectories. This is explicitly
+post-hoc/test-tuned and `independent_test_performance=false`. Do not reinterpret
+it as nested-CV or external-test performance.
+
+## 5. Parallel execution
+
+`run_phq_balanced_cv.py` is sequential by design. Partition work across GPUs
+without changing the protocol:
+
+```bash
+python scripts/run_phq_balanced_cv.py \
+  --manifest-root ./datasets/phq5 --output-root ./runs/phq5 \
+  --gpu 0 --folds 0 --seeds 1234 12345
+```
+
+Every run writes to `fold_<FOLD>/seed<SEED>`. Distinct workers may safely target
+the same output root when their fold/seed pairs do not overlap. Nonempty run
+directories are never overwritten.
+
+## 6. Verification
+
+Run the lightweight unit/protocol suite:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Hardware, CUDA, AMP, and library differences can prevent bit-exact
+probabilities. Preserve the subject inventory, split hashes, selected epoch,
+threshold, and aggregation order before comparing rounded metrics.

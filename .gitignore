@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
+.venv*/
 venv/
 
 # Experiment outputs
@@ -10,6 +10,11 @@ logs_fixed_split_BCE_high_dropout_CTC005_3stra*/
 queue_logs_*/
 *.log
 *.csv
+jobs/
+runs/
+results/
+datasets/
+checkpoints/
 
 # Processed data / large artifacts
 processed_data-*/
@@ -17,11 +22,18 @@ processed_data-*/
 *.label
 *.phq_label
 *.pt
+*.pth
 *.ckpt
+*.safetensors
 
 # Hugging Face cache
 hf_cache/
 .cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # OS / editor
 .DS_Store
