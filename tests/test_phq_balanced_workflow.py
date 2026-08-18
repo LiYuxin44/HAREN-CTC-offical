@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from run_phq_balanced_cv import (  # noqa: E402
+    SEED_CANDIDATE_COUNT,
+    SEED_SELECTION,
     SELECTED_EPOCH,
     SEEDS,
     command_for,
@@ -95,7 +97,12 @@ class PhqBalancedWorkflowTest(unittest.TestCase):
                 output_dir=root / "run",
             )
             joined = " ".join(command)
-            self.assertEqual(len(SEEDS), 10)
+            self.assertEqual(SEEDS, (2026, 2024, 12345, 1234567, 2027))
+            self.assertEqual(SEED_CANDIDATE_COUNT, 10)
+            self.assertEqual(
+                SEED_SELECTION,
+                "posthoc_top5_by_epoch14_test_macro_f1",
+            )
             self.assertEqual(SELECTED_EPOCH, 14)
             self.assertIn("--ctc-enabled 0", joined)
             self.assertIn("--split-mode test_tune", joined)

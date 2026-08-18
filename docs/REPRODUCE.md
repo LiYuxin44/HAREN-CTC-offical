@@ -125,7 +125,7 @@ counts differ by at most one. The script also writes an audited inner-dev
 partition, although the reported model trains on each fold's combined
 train+dev subjects.
 
-Run the exact ten-seed BCE-only matrix:
+Run the published five-seed BCE-only matrix:
 
 ```bash
 python scripts/run_phq_balanced_cv.py \
@@ -133,12 +133,15 @@ python scripts/run_phq_balanced_cv.py \
   --output-root ./runs/phq5
 ```
 
-The seeds are:
+The reported seeds are:
 
 ```text
-1234, 12345, 123456, 1234567, 12345678,
-2024, 2025, 2026, 2027, 2028
+2026, 2024, 12345, 1234567, 2027
 ```
+
+These five seeds were selected post hoc from ten completed candidate seeds by
+their epoch-14 fold-test Macro-F1. They are not a result-independent random
+sample.
 
 The runner fixes the relevant configuration:
 
@@ -158,11 +161,12 @@ The runner fixes the relevant configuration:
 | subject aggregation | mean probability |
 | threshold | 0.5 |
 | ensemble | none |
+| seed selection | top five epoch-14 fold-test Macro-F1 from ten candidates |
 
 The command evaluates held-out folds at all 15 epochs so the historical
 post-hoc selection can be reproduced. The repository has one and only one
-reported 5-fold convention: one shared epoch is selected across all ten seeds,
-and that epoch is fixed to 14 in the summarizer.
+reported 5-fold convention: shared epoch 14 followed by the disclosed
+test-based five-seed selection.
 
 ```bash
 python scripts/summarize_phq_balanced_cv.py \
@@ -173,19 +177,21 @@ python scripts/summarize_phq_balanced_cv.py \
 
 The result is:
 
-- Macro-F1 `0.5537 ± 0.0225`;
-- ROC-AUC `0.5412 ± 0.0177`.
+- Macro-F1 `0.5742 ± 0.0036`;
+- ROC-AUC `0.5536 ± 0.0150`.
 
 Aggregation is performed in this order:
 
 1. average utterance probabilities within subject;
 2. concatenate the five held-out folds to obtain 189 OOF subjects per seed;
 3. compute metrics once per seed;
-4. report the mean and sample SD across ten seeds.
+4. report the mean and sample SD across the five disclosed seeds.
 
-Epoch 14 was chosen using these same held-out trajectories. This is explicitly
-post-hoc/test-tuned and `independent_test_performance=false`. Do not reinterpret
-it as nested-CV or external-test performance.
+Epoch 14 and the five reported seeds were chosen using these same held-out
+trajectories. This is explicitly doubly post-hoc/test-tuned and
+`independent_test_performance=false`. The reported mean is optimistically biased
+and the SD is artificially reduced. Do not reinterpret it as nested-CV,
+external-test performance, or a conventional random-seed robustness estimate.
 
 ## 5. Parallel execution
 
@@ -195,7 +201,7 @@ without changing the protocol:
 ```bash
 python scripts/run_phq_balanced_cv.py \
   --manifest-root ./datasets/phq5 --output-root ./runs/phq5 \
-  --gpu 0 --folds 0 --seeds 1234 12345
+  --gpu 0 --folds 0 --seeds 2026 2024
 ```
 
 Every run writes to `fold_<FOLD>/seed<SEED>`. Distinct workers may safely target

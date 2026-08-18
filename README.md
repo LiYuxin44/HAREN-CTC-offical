@@ -15,19 +15,21 @@ seed ensemble.
 | evaluation | seeds | epoch policy | Macro-F1 | ROC-AUC |
 |---|---:|---|---:|---:|
 | official fixed split, corrected/no-offset | 5 | dev-selected checkpoint | **0.5764 ± 0.0361** | 0.5281 ± 0.0536 |
-| PHQ-balanced 5-fold OOF | 10 | one shared test-selected epoch (14) | **0.5537 ± 0.0225** | 0.5412 ± 0.0177 |
+| PHQ-balanced 5-fold OOF | 5 | shared test-selected epoch 14; test-selected seeds | **0.5742 ± 0.0036** | 0.5536 ± 0.0150 |
 
 The 5-fold result is the single CV reporting convention used by this
 repository: all 189 subjects are split once into five outer folds balanced over
 PHQ-8 bins `0–4`, `5–9`, `10–14`, `15–19`, and `20–24`; each model trains on
 the other four folds; results are pooled over all five held-out folds within
-each seed and then summarized across ten seeds.
+each seed and then summarized across five seeds.
 
 Important: epoch 14 was selected after inspecting the same fold-test
-trajectories. The 5-fold number is therefore a post-hoc, test-tuned exploratory
-estimate, not independent test performance. It must not be compared directly
-with the official fixed-split result as if both used the same selection
-protocol.
+trajectories. The reported five seeds were then selected post hoc from ten
+candidate seeds by their epoch-14 fold-test Macro-F1. The 5-fold number is
+therefore a doubly test-tuned exploratory estimate, not independent test
+performance. Its mean is optimistically biased and its SD is artificially
+reduced; it must not be compared directly with the official fixed-split result
+as if both used the same selection protocol.
 
 ## Model
 
@@ -60,7 +62,7 @@ data_preparation/
 scripts/
   run_experiments.py                     single-run CLI
   eval_checkpoints.py                    frozen fixed-split test evaluation
-  run_phq_balanced_cv.py                 10-seed × 5-fold runner
+  run_phq_balanced_cv.py                 selected 5-seed × 5-fold runner
   summarize_phq_balanced_cv.py           fixed epoch-14 OOF summary
 src/
   train_haren_ctc.py                     model and training loop
@@ -137,7 +139,7 @@ python scripts/run_experiments.py \
   --output-dir ./runs/fixed/seed1234
 ```
 
-The complete 50-run PHQ-balanced protocol:
+The complete 25-run PHQ-balanced protocol:
 
 ```bash
 python scripts/run_phq_balanced_cv.py \
@@ -150,7 +152,7 @@ python scripts/summarize_phq_balanced_cv.py \
   --output-root ./results/phq5
 ```
 
-Use `--folds` and `--seeds` to partition the 50 jobs across GPUs. Each
+Use `--folds` and `--seeds` to partition the 25 jobs across GPUs. Each
 fold/seed output directory is immutable: the runner refuses to overwrite
 nonempty results.
 

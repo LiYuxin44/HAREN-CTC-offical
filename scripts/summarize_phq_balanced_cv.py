@@ -17,7 +17,13 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from run_phq_balanced_cv import FOLDS, SELECTED_EPOCH, SEEDS
+from run_phq_balanced_cv import (
+    FOLDS,
+    SEED_CANDIDATE_COUNT,
+    SEED_SELECTION,
+    SELECTED_EPOCH,
+    SEEDS,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,7 +31,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runs-root", required=True, type=Path)
     parser.add_argument("--manifest-root", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
-    parser.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
     return parser.parse_args()
 
 
@@ -117,8 +122,6 @@ def prediction_path(run_dir: Path) -> Path:
 
 def main() -> None:
     args = parse_args()
-    if len(set(args.seeds)) != len(args.seeds):
-        raise ValueError("Seeds must be unique")
     manifest_config = json.loads(
         (args.manifest_root / "manifest_config.json").read_text()
     )
@@ -127,7 +130,7 @@ def main() -> None:
         raise RuntimeError("Manifest config has no supported data variant")
     rows = []
     pooled_predictions = []
-    for seed in args.seeds:
+    for seed in SEEDS:
         fold_predictions = []
         for fold in FOLDS:
             run_dir = args.runs_root / f"fold_{fold}" / f"seed{seed}"
@@ -178,8 +181,12 @@ def main() -> None:
         "protocol": "phq5_balanced_posthoc_v1",
         "subjects": 189,
         "folds": 5,
-        "seeds": sorted(args.seeds),
-        "seed_count": len(args.seeds),
+        "seeds": list(SEEDS),
+        "seed_count": len(SEEDS),
+        "seed_candidate_count": SEED_CANDIDATE_COUNT,
+        "seed_selection": SEED_SELECTION,
+        "post_hoc_seed_selection": True,
+        "test_used_for_seed_selection": True,
         "selected_epoch": SELECTED_EPOCH,
         "epoch_selection": "shared_test_selected",
         "threshold": 0.5,

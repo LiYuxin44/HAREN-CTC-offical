@@ -10,10 +10,12 @@ import sys
 from pathlib import Path
 
 
-SEEDS = (1234, 12345, 123456, 1234567, 12345678, 2024, 2025, 2026, 2027, 2028)
+SEEDS = (2026, 2024, 12345, 1234567, 2027)
 FOLDS = (0, 1, 2, 3, 4)
 EPOCHS = 15
 SELECTED_EPOCH = 14
+SEED_CANDIDATE_COUNT = 10
+SEED_SELECTION = "posthoc_top5_by_epoch14_test_macro_f1"
 PHQ_BINS = ("0-4", "5-9", "10-14", "15-19", "20-24")
 
 
@@ -34,9 +36,13 @@ def parse_args() -> argparse.Namespace:
 def validate_protocol(args: argparse.Namespace) -> tuple[Path, dict]:
     if (
         len(set(args.seeds)) != len(args.seeds)
+        or not set(args.seeds).issubset(SEEDS)
         or not set(args.folds).issubset(FOLDS)
     ):
-        raise ValueError("Seeds must be unique and folds must be in 0..4")
+        raise ValueError(
+            "Seeds must be a unique subset of the published five; "
+            "folds must be in 0..4"
+        )
     config_path = args.manifest_root / "manifest_config.json"
     config = json.loads(config_path.read_text())
     if (
@@ -210,7 +216,9 @@ def main() -> None:
 
     print(
         "WARNING: fold-test is evaluated at every epoch. Epoch 14 is the "
-        "frozen post-hoc headline; these are not independent test estimates.",
+        "frozen post-hoc headline, and the five published seeds were selected "
+        "from ten candidates by epoch-14 fold-test Macro-F1. These are not "
+        "independent test estimates.",
         flush=True,
     )
     if args.dry_run:
@@ -226,6 +234,10 @@ def main() -> None:
         ),
         "manifest_namespace": manifest_config.get("namespace"),
         "seeds": args.seeds,
+        "seed_candidate_count": SEED_CANDIDATE_COUNT,
+        "seed_selection": SEED_SELECTION,
+        "post_hoc_seed_selection": True,
+        "test_used_for_seed_selection": True,
         "folds": args.folds,
         "epochs": EPOCHS,
         "selected_epoch": SELECTED_EPOCH,
