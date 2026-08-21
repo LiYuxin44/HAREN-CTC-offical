@@ -9,12 +9,14 @@ reported 5-fold result uses the repaired neutral-unit CTC head.
 
 ## Reported results
 
-All values are subject-level mean ± sample SD at threshold 0.5, without a
-seed ensemble.
+All values are subject-level at threshold 0.5 without a seed ensemble. Mean
+rows report mean ± sample SD; the fixed Dev maximum is one selected checkpoint.
 
 | evaluation | seeds | epoch policy | Macro-F1 | ROC-AUC |
 |---|---:|---|---:|---:|
-| official fixed split, corrected offset + CTC | 5 | Dev-only CTC HPO; per-seed Dev checkpoints | **0.5446 ± 0.0442** | 0.5134 ± 0.0351 |
+| official fixed Dev mean, corrected offset + CTC | 5 | per-seed best Dev checkpoint | **0.6103 ± 0.0470** | 0.5841 ± 0.0523 |
+| official fixed Dev max, corrected offset + CTC | 1 | best seed/epoch selected by Dev Macro-F1 | **0.6686** | 0.5978 |
+| official fixed Test, corrected offset + CTC | 5 | corresponding frozen Dev checkpoints | **0.5446 ± 0.0442** | 0.5134 ± 0.0351 |
 | PHQ-balanced 5-fold OOF, offset + CTC | 5 | shared test-selected epoch 11; test-selected seeds | **0.5676 ± 0.0092** | 0.5476 ± 0.0134 |
 
 For the fixed split, 17 CTC settings were screened with seed 123 on Dev only.
@@ -23,7 +25,8 @@ Three finalists were then confirmed on the predeclared seeds `123, 1234,
 five-epoch warmup, and weight `0.005`. Its five checkpoints score Dev Macro-F1
 `0.6103 ± 0.0470` and Dev ROC-AUC `0.5841 ± 0.0523`; the table gives their
 corresponding Test scores. The highest-Dev checkpoint is seed 123 at epoch 7:
-Dev Macro-F1 `0.6686`; its corresponding Test Macro-F1 is `0.5761`.
+Dev Macro-F1 `0.6686` and Dev ROC-AUC `0.5978`; its corresponding Test
+Macro-F1 is `0.5761`.
 
 The CTC setting and checkpoints did not use Test values for selection.
 However, this repository's official fixed Test split had already been examined

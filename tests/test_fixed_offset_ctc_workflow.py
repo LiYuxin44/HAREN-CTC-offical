@@ -81,6 +81,18 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(result["best_dev_seed"]["seed"], 123)
         self.assertEqual(result["best_dev_seed"]["checkpoint_epoch"], 7)
+        self.assertEqual(
+            result["best_dev_seed"]["selection"],
+            "maximum_dev_f1_macro_across_five_seed_dev_best_checkpoints",
+        )
+        self.assertAlmostEqual(
+            result["best_dev_seed"]["dev"]["f1_macro"],
+            0.668560606060606,
+        )
+        self.assertAlmostEqual(
+            result["best_dev_seed"]["dev"]["auc"],
+            0.5978260869565217,
+        )
         self.assertAlmostEqual(
             result["best_dev_seed"]["corresponding_test"]["f1_macro"],
             0.5761273209549072,

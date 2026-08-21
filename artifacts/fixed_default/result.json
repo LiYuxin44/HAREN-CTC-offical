@@ -153,6 +153,7 @@
     }
   },
   "best_dev_seed": {
+    "selection": "maximum_dev_f1_macro_across_five_seed_dev_best_checkpoints",
     "seed": 123,
     "checkpoint_epoch": 7,
     "dev": {

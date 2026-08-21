@@ -102,19 +102,22 @@ python scripts/eval_checkpoints.py \
   --ctc-enabled 1
 ```
 
-At the selected checkpoints, the five development runs give:
+Five-seed Dev mean at the selected per-seed checkpoints:
 
 - Dev Macro-F1 `0.6103 ± 0.0470`;
 - Dev ROC-AUC `0.5841 ± 0.0523`.
+
+The maximum individual Dev Macro-F1 is seed 123 at epoch 7. Selecting that one
+seed/epoch by Dev Macro-F1 gives Dev Macro-F1 `0.6686` and Dev ROC-AUC
+`0.5978`.
 
 The corresponding frozen-checkpoint official-test runs give:
 
 - Test Macro-F1 `0.5446 ± 0.0442`;
 - Test ROC-AUC `0.5134 ± 0.0351`.
 
-Seed 123 at epoch 7 has the highest Dev Macro-F1 among the five confirmation
-runs: Dev Macro-F1 `0.6686`, Dev ROC-AUC `0.5978`. Its corresponding Test
-metrics are Macro-F1 `0.5761` and ROC-AUC `0.4805`.
+That same seed-123/epoch-7 checkpoint has corresponding Test Macro-F1 `0.5761`
+and Test ROC-AUC `0.4805`.
 
 These are mean ± sample SD across seeds at subject threshold 0.5, with no
 ensemble. Full-precision aggregate and per-seed values are in
