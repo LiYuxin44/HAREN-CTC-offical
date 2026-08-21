@@ -1,8 +1,10 @@
 # Reproducing the reported results
 
 Commands assume the repository root as the working directory. Generated audio,
-manifests, checkpoints, predictions, and result tables are intentionally not
-versioned.
+manifests, predictions, and run directories are intentionally not versioned.
+The repository retains one representative 5CV checkpoint separately. The five
+fixed-split checkpoints described below are retained only in the local,
+gitignored checkpoint directory.
 
 ## 1. Environment
 
@@ -41,44 +43,48 @@ The label files must provide `Participant_ID`, `PHQ8_Binary`, and
 
 ## 3. Official fixed split
 
-Build the corrected no-offset data:
+Build the corrected timestamp-offset data:
 
 ```bash
 python data_preparation/preprocess.py \
   --audio-dir /path/to/DAIC/wav_files \
   --trans-dir /path/to/DAIC/transcripts \
   --label-dir /path/to/DAIC/labels \
-  --out-root ./datasets/fixed_corrected_nooffset
+  --out-root ./datasets/fixed_corrected_offset
 ```
 
-The reported BCE-only winner uses:
+The reported `fixed_default` CTC-on configuration uses:
 
-- seeds `123, 1234, 12345, 123456, 1234567`;
+- the predeclared seeds `123, 1234, 12345, 123456, 1234567`;
 - learning rate `1e-5`;
-- batch size `16`;
+- batch size `8`;
 - weight decay `1e-5`;
-- dropout `0.1`;
+- dropout `0.5`;
 - 15 epochs;
+- fixed-weight local-unit CTC (`weight=0.005`, `K=10`, five-epoch warmup,
+  label-shifted legacy targets);
 - the legacy preprocessing/crop/AdamW defaults;
 - checkpoint selection on dev Macro-F1, then dev AUC, F1(pos),
   sensitivity, and earlier epoch;
 - subject probability equal to the mean utterance probability.
 
-Train one isolated run per seed:
+The CTC parameters were selected without Test values. A 17-arm screen varied
+fixed weights, warmup, `K`, adaptive loss ratios, and shared-gradient ratios
+using seed 123 and Dev only. Three finalists were confirmed on all five
+predeclared seeds. The winner was selected by five-seed mean Dev Macro-F1, then
+mean Dev AUC.
+
+Run one isolated training job per selected seed:
 
 ```bash
-for seed in 123 1234 12345 123456 1234567; do
-  python scripts/run_experiments.py \
-    --data-root ./datasets/fixed_corrected_nooffset \
-    --gpu 0 --seeds "$seed" --epochs 15 \
-    --lr 1e-5 --batch-size 16 --weight-decay 1e-5 --dropout 0.1 \
-    --ctc-enabled 0 --test-policy none \
-    --run-tag "fixed_seed${seed}" \
-    --output-dir "./runs/fixed/seed${seed}"
-done
+python scripts/run_fixed_offset_ctc.py \
+  --data-root ./datasets/fixed_corrected_offset \
+  --output-root ./runs/fixed \
+  --gpu 0
 ```
 
-Training must use `--test-policy none`; no official-test loader is constructed.
+The pinned runner always uses `--ctc-enabled 1` and `--test-policy none`; no
+official-test loader is constructed during training or checkpoint selection.
 After all choices are frozen, create a checkpoint index with these columns:
 
 ```text
@@ -91,16 +97,38 @@ Evaluate each frozen checkpoint once:
 ```bash
 python scripts/eval_checkpoints.py \
   --checkpoint-index ./checkpoint_index.csv \
-  --output-root ./results/fixed
+  --output-root ./results/fixed \
+  --variant fixed_corrected_offset \
+  --ctc-enabled 1
 ```
 
-The five official-test runs give:
+At the selected checkpoints, the five development runs give:
 
-- Macro-F1 `0.5764 ± 0.0361`;
-- ROC-AUC `0.5281 ± 0.0536`.
+- Dev Macro-F1 `0.6103 ± 0.0470`;
+- Dev ROC-AUC `0.5841 ± 0.0523`.
+
+The corresponding frozen-checkpoint official-test runs give:
+
+- Test Macro-F1 `0.5446 ± 0.0442`;
+- Test ROC-AUC `0.5134 ± 0.0351`.
+
+Seed 123 at epoch 7 has the highest Dev Macro-F1 among the five confirmation
+runs: Dev Macro-F1 `0.6686`, Dev ROC-AUC `0.5978`. Its corresponding Test
+metrics are Macro-F1 `0.5761` and ROC-AUC `0.4805`.
 
 These are mean ± sample SD across seeds at subject threshold 0.5, with no
-ensemble.
+ensemble. Full-precision aggregate and per-seed values are in
+`artifacts/fixed_default/result.json`.
+
+The CTC configuration and checkpoints were selected without Test metrics.
+Nevertheless, the official fixed Test split had already been accessed by
+earlier repository experiments. The final number therefore is not an
+independent untouched-test estimate.
+
+The five selected Dev-best checkpoints are retained locally in
+`checkpoints/fixed_default/`. The directory is gitignored and
+must not be added to a commit; the result JSON records each filename, byte
+count, and SHA-256 digest.
 
 ## 4. PHQ-balanced 5-fold protocol
 
@@ -116,43 +144,56 @@ python data_preparation/prepare_phq_stratified_train_test.py \
   --audio-dir /path/to/DAIC/wav_files \
   --trans-dir /path/to/DAIC/transcripts \
   --label-dir /path/to/DAIC/labels \
-  --offset --seed 123 \
+  --seed 123 \
   --out-root ./datasets/phq5
 ```
 
 Expected total bin counts are `86, 46, 30, 20, 7`. For each bin, outer-fold
-counts differ by at most one. The script also writes an audited inner-dev
-partition, although the reported model trains on each fold's combined
-train+dev subjects.
+counts differ by at most one. There is no inner-dev split: each model trains on
+the other four outer folds.
 
-Run the published five-seed BCE-only matrix:
+Fit the fold-local neutral HuBERT targets. Each `K=10` codebook is fitted only
+on that fold's outer-train subjects, and the held-out fold is excluded from both
+the codebook and packed unit cache:
+
+```bash
+python data_preparation/prepare_phq_ctc_units.py \
+  --manifest-root ./datasets/phq5 \
+  --output-root ./datasets/phq5_units
+```
+
+Run the published five-seed CTC-on matrix:
 
 ```bash
 python scripts/run_phq_balanced_cv.py \
   --manifest-root ./datasets/phq5 \
+  --unit-root ./datasets/phq5_units \
   --output-root ./runs/phq5
 ```
 
 The reported seeds are:
 
 ```text
-2026, 2024, 12345, 1234567, 2027
+12345, 2024, 2028, 2026, 2025
 ```
 
 These five seeds were selected post hoc from ten completed candidate seeds by
-their epoch-14 fold-test Macro-F1. They are not a result-independent random
+their epoch-11 fold-test Macro-F1. They are not a result-independent random
 sample.
 
 The runner fixes the relevant configuration:
 
 | item | value |
 |---|---|
-| epochs | 15 |
+| trained epochs | 11 |
+| optimizer/CTC schedule horizon | 15 epochs |
 | learning rate | `1e-4` |
 | batch size | 16 |
 | weight decay | `1e-5` |
 | dropout | 0.3 |
-| loss | BCE only |
+| loss | BCE + neutral-unit CTC |
+| HuBERT units | fold-local outer-train-only, `K=10`, stride 1 |
+| CTC control | shared-gradient target ratio `0.0001` |
 | WavLM mask | true length |
 | waveform normalization | valid audio first, then pad |
 | train crop | deterministic epoch-keyed |
@@ -161,11 +202,12 @@ The runner fixes the relevant configuration:
 | subject aggregation | mean probability |
 | threshold | 0.5 |
 | ensemble | none |
-| seed selection | top five epoch-14 fold-test Macro-F1 from ten candidates |
+| seed selection | top five epoch-11 fold-test Macro-F1 from ten candidates |
 
-The command evaluates held-out folds at all 15 epochs so the historical
-post-hoc selection can be reproduced. The repository has one and only one
-reported 5-fold convention: shared epoch 14 followed by the disclosed
+The 11 training epochs use the same 15-epoch schedule horizon as the original
+epoch sweep, so epoch-11 weights follow the selected trajectory without
+retaining later-epoch results. The repository has one and only one reported
+5-fold convention: shared epoch 11, threshold 0.5, followed by the disclosed
 test-based five-seed selection.
 
 ```bash
@@ -175,10 +217,10 @@ python scripts/summarize_phq_balanced_cv.py \
   --output-root ./results/phq5
 ```
 
-The result is:
+The sole 5CV result is:
 
-- Macro-F1 `0.5742 ± 0.0036`;
-- ROC-AUC `0.5536 ± 0.0150`.
+- Macro-F1 `0.5676 ± 0.0092`;
+- ROC-AUC `0.5476 ± 0.0134`.
 
 Aggregation is performed in this order:
 
@@ -187,11 +229,26 @@ Aggregation is performed in this order:
 3. compute metrics once per seed;
 4. report the mean and sample SD across the five disclosed seeds.
 
-Epoch 14 and the five reported seeds were chosen using these same held-out
+Epoch 11 and the five reported seeds were chosen using these same held-out
 trajectories. This is explicitly doubly post-hoc/test-tuned and
 `independent_test_performance=false`. The reported mean is optimistically biased
 and the SD is artificially reduced. Do not reinterpret it as nested-CV,
 external-test performance, or a conventional random-seed robustness estimate.
+
+### Representative checkpoint
+
+`artifacts/phq5_default/representative_seed2026_fold4_epoch11.pt` retains the
+trainable head for seed 2026, fold 4, epoch 11. Its SHA-256 is
+`82b7d0029249e0f8a0a1869712b23bf22a9f577419685e3d6606fc5dda4d420b`.
+This seed-fold pair had the highest historical epoch-11 fold-test Macro-F1
+(`0.7259`) among the 25 reported seed-fold models. The retained
+same-configuration CUDA replay scores `0.6119` on that fold because the original
+training trajectory was not bitwise reproducible; both values are recorded in
+the adjacent metadata JSON.
+
+This is one representative fold checkpoint, not a complete OOF model. A single
+OOF seed requires five fold-specific checkpoints, and the reported mean requires
+all 25 runs.
 
 ## 5. Parallel execution
 
@@ -200,8 +257,10 @@ without changing the protocol:
 
 ```bash
 python scripts/run_phq_balanced_cv.py \
-  --manifest-root ./datasets/phq5 --output-root ./runs/phq5 \
-  --gpu 0 --folds 0 --seeds 2026 2024
+  --manifest-root ./datasets/phq5 \
+  --unit-root ./datasets/phq5_units \
+  --output-root ./runs/phq5 \
+  --gpu 0 --folds 0 --seeds 12345 2024
 ```
 
 Every run writes to `fold_<FOLD>/seed<SEED>`. Distinct workers may safely target

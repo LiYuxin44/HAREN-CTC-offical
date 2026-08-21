@@ -5,8 +5,7 @@ DAIC-WOZ / AVEC-2017 utterance-level preprocessing for HAREN-CTC.
 For every participant in an official AVEC-2017 split CSV this script:
   1. reads the participant's transcript CSV and keeps only 'Participant' turns,
   2. computes each turn's duration and sorts turns longest-first,
-  3. (optionally) applies a per-subject timestamp offset to fix known
-     mis-alignments in the released transcripts,
+  3. applies the known per-subject timestamp corrections,
   4. drops turns shorter than --min-duration seconds,
   5. selects a number of turns depending on the split (see below),
   6. cuts the corresponding audio segment out of the full <PID>_AUDIO.wav and
@@ -22,25 +21,23 @@ Turn-selection policy (matches the paper):
   * val / test split, sample_mode='fixed':
       --fixed-n (default 20) longest turns per subject, regardless of label.
 
-The default output directory reproduces the "no-offset" variant used for the
-headline results. Pass --offset to enable the four transcript corrections used
-for the "offset" ablation.
+The four known transcript corrections are mandatory for this canonical
+preprocessing path and are always applied.
 
 Example
 -------
-  python preprocess.py \
-      --audio-dir  /path/to/DAIC/wav_files \
-      --trans-dir  /path/to/DAIC/transcripts \
-      --label-dir  /path/to/DAIC/labels \
-      --out-root   ./processed_data-utterance-fixed-split-nooffset
+  python preprocess.py \\
+      --audio-dir  /path/to/DAIC/wav_files \\
+      --trans-dir  /path/to/DAIC/transcripts \\
+      --label-dir  /path/to/DAIC/labels \\
+      --out-root   ./datasets/fixed_corrected_offset
 """
 import os
 import argparse
 import pandas as pd
 from pydub import AudioSegment
 
-# Known transcript timestamp corrections (seconds) for the "offset" variant.
-# Disabled by default; enable with --offset to reproduce the offset ablation.
+# Known transcript timestamp corrections (seconds) for the reported variant.
 OFFSET_MAP = {
     "318": 34.0,
     "321": 3.355,
@@ -172,25 +169,21 @@ def main():
                     help='Turns per subject for val/test (default 20).')
     ap.add_argument('--min-duration', type=float, default=1.0,
                     help='Drop turns shorter than this many seconds (default 1.0).')
-    ap.add_argument('--offset', action='store_true',
-                    help='Enable the four known transcript timestamp corrections.')
     args = ap.parse_args()
-
-    offset_map = OFFSET_MAP if args.offset else {}
 
     run(os.path.join(args.out_root, 'train'),
         os.path.join(args.label_dir, args.csv_train),
-        args.audio_dir, args.trans_dir, offset_map,
+        args.audio_dir, args.trans_dir, OFFSET_MAP,
         sample_mode='proportional', min_duration=args.min_duration)
 
     run(os.path.join(args.out_root, 'val'),
         os.path.join(args.label_dir, args.csv_val),
-        args.audio_dir, args.trans_dir, offset_map,
+        args.audio_dir, args.trans_dir, OFFSET_MAP,
         sample_mode='fixed', fixed_n=args.fixed_n, min_duration=args.min_duration)
 
     run(os.path.join(args.out_root, 'test'),
         os.path.join(args.label_dir, args.csv_test),
-        args.audio_dir, args.trans_dir, offset_map,
+        args.audio_dir, args.trans_dir, OFFSET_MAP,
         sample_mode='fixed', fixed_n=args.fixed_n, min_duration=args.min_duration)
 
 

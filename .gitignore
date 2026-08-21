@@ -6,7 +6,7 @@ __pycache__/
 venv/
 
 # Experiment outputs
-logs_fixed_split_BCE_high_dropout_CTC005_3stra*/
+logs_*/
 queue_logs_*/
 *.log
 *.csv
@@ -25,6 +25,7 @@ processed_data-*/
 *.pth
 *.ckpt
 *.safetensors
+!artifacts/phq5_default/representative_seed2026_fold4_epoch11.pt
 
 # Hugging Face cache
 hf_cache/

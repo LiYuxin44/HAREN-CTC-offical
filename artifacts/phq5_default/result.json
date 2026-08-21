@@ -1,0 +1,85 @@
+{
+  "protocol": "phq5_balanced_ctc_posthoc_v1",
+  "subjects": 189,
+  "folds": 5,
+  "data_variant": "offset",
+  "training": {
+    "epochs": 11,
+    "schedule_epochs": 15,
+    "inner_dev_used": false,
+    "outer_train_manifest": "train_dev_manifest.csv",
+    "ctc_enabled": true,
+    "ctc_mode": "shared_grad_norm",
+    "ctc_target_mode": "neutral",
+    "ctc_k": 10,
+    "ctc_grad_target_ratio": 0.0001,
+    "global_unit_stride": 1,
+    "threshold": 0.5
+  },
+  "selection": {
+    "epoch_selection": "shared_test_selected",
+    "selected_epoch": 11,
+    "seed_selection": "posthoc_top5_by_epoch11_test_macro_f1",
+    "seed_candidate_count": 10,
+    "selected_seeds": [
+      12345,
+      2024,
+      2028,
+      2026,
+      2025
+    ],
+    "test_used_for_epoch_selection": true,
+    "test_used_for_seed_selection": true,
+    "independent_test_performance": false
+  },
+  "seed_metrics": [
+    {
+      "seed": 12345,
+      "f1_macro": 0.5771255593577257,
+      "auc": 0.5640616693248273
+    },
+    {
+      "seed": 2024,
+      "f1_macro": 0.5714285714285714,
+      "auc": 0.5344231791600212
+    },
+    {
+      "seed": 2028,
+      "f1_macro": 0.5688212927756654,
+      "auc": 0.5442583732057417
+    },
+    {
+      "seed": 2026,
+      "f1_macro": 0.5681252344735854,
+      "auc": 0.5590776182881446
+    },
+    {
+      "seed": 2025,
+      "f1_macro": 0.5523506699977289,
+      "auc": 0.5361509835194046
+    }
+  ],
+  "mean": {
+    "f1_macro": 0.5675702656066554,
+    "auc": 0.5475943646996279
+  },
+  "sample_sd": {
+    "f1_macro": 0.009215466786940213,
+    "auc": 0.013403331444077701
+  },
+  "representative_checkpoint": {
+    "path": "representative_seed2026_fold4_epoch11.pt",
+    "sha256": "82b7d0029249e0f8a0a1869712b23bf22a9f577419685e3d6606fc5dda4d420b",
+    "bytes": 71542527,
+    "seed": 2026,
+    "fold": 4,
+    "epoch": 11,
+    "selection": "highest historical epoch-11 outer-test Macro-F1 among the 25 reported seed-fold models",
+    "historical_f1_macro": 0.7259259259259259,
+    "historical_auc": 0.7307692307692307,
+    "checkpoint_replay_f1_macro": 0.6118881118881119,
+    "checkpoint_replay_auc": 0.7237762237762237,
+    "full_oof_reproduction": false,
+    "note": "The same-configuration CUDA rerun is not bitwise identical to the historical trajectory."
+  }
+}

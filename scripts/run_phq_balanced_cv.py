@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the published PHQ-balanced 5-fold BCE-only protocol."""
+"""Run the sole published PHQ-balanced 5-fold CTC protocol."""
 
 from __future__ import annotations
 
@@ -10,18 +10,25 @@ import sys
 from pathlib import Path
 
 
-SEEDS = (2026, 2024, 12345, 1234567, 2027)
+SEEDS = (12345, 2024, 2028, 2026, 2025)
 FOLDS = (0, 1, 2, 3, 4)
-EPOCHS = 15
-SELECTED_EPOCH = 14
+EPOCHS = 11
+SCHEDULE_EPOCHS = 15
+SELECTED_EPOCH = 11
 SEED_CANDIDATE_COUNT = 10
-SEED_SELECTION = "posthoc_top5_by_epoch14_test_macro_f1"
+SEED_SELECTION = "posthoc_top5_by_epoch11_test_macro_f1"
 PHQ_BINS = ("0-4", "5-9", "10-14", "15-19", "20-24")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest-root", required=True, type=Path)
+    parser.add_argument(
+        "--unit-root",
+        required=True,
+        type=Path,
+        help="Directory containing fold_<FOLD>_k10_units.npz.",
+    )
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--gpu", default="0")
@@ -48,12 +55,14 @@ def validate_protocol(args: argparse.Namespace) -> tuple[Path, dict]:
     if (
         config.get("subjects") != 189
         or config.get("outer_folds") != 5
-        or config.get("variant") not in {"offset", "nooffset"}
+        or config.get("variant") != "offset"
         or config.get("primary_stratification") != ["phq_bin"]
         or config.get("phq_bin_labels") != list(PHQ_BINS)
         or config.get("phq_used_for_assignment") is not True
     ):
-        raise RuntimeError("Manifest root is not the PHQ-balanced protocol")
+        raise RuntimeError(
+            "Manifest root is not the offset PHQ-balanced protocol"
+        )
     data_root = Path(config["source_data_root"])
     if not (data_root / "pool").is_dir():
         raise FileNotFoundError(data_root / "pool")
@@ -76,6 +85,9 @@ def command_for(
     for path in (train_manifest, test_manifest):
         if not path.is_file():
             raise FileNotFoundError(path)
+    unit_cache = args.unit_root / f"fold_{fold}_k10_units.npz"
+    if not unit_cache.is_file():
+        raise FileNotFoundError(unit_cache)
     return [
         args.python,
         str(repo_root / "scripts" / "run_experiments.py"),
@@ -89,6 +101,8 @@ def command_for(
         str(seed),
         "--epochs",
         str(EPOCHS),
+        "--schedule-epochs",
+        str(SCHEDULE_EPOCHS),
         "--batch-size",
         "16",
         "--lr",
@@ -98,13 +112,13 @@ def command_for(
         "--dropout",
         "0.3",
         "--ctc-enabled",
-        "0",
+        "1",
         "--ctc-mode",
         "shared_grad_norm",
         "--ctc-target-mode",
         "neutral",
         "--ctc-weight",
-        "0",
+        "1.0",
         "--ctc-target-ratio",
         "5.0",
         "--ctc-warmup-epochs",
@@ -112,7 +126,7 @@ def command_for(
         "--ctc-k",
         "10",
         "--ctc-grad-target-ratio",
-        "0.003",
+        "0.0001",
         "--ctc-grad-update-interval",
         "1",
         "--ctc-grad-ema-decay",
@@ -123,6 +137,10 @@ def command_for(
         "normalized_fp32",
         "--temporal-head-policy",
         "neutral_k1",
+        "--global-unit-stride",
+        "1",
+        "--global-unit-reverse",
+        "0",
         "--crop-alignment-samples",
         "320",
         "--wavlm-mask-policy",
@@ -146,7 +164,7 @@ def command_for(
         "--ema-decay",
         "0",
         "--save-training-state",
-        "1",
+        "0",
         "--routing-init-policy",
         "legacy",
         "--sampling-policy",
@@ -154,7 +172,9 @@ def command_for(
         "--aggregation-policy",
         "mean_probability",
         "--temporal-target-policy",
-        "local_kmeans_ctc",
+        "global_units_ctc",
+        "--global-unit-cache",
+        str(unit_cache),
         "--grad-diagnostic-interval",
         "0",
         "--grad-clip-norm",
@@ -215,9 +235,9 @@ def main() -> None:
             )
 
     print(
-        "WARNING: fold-test is evaluated at every epoch. Epoch 14 is the "
+        "WARNING: fold-test is evaluated at every epoch. Epoch 11 is the "
         "frozen post-hoc headline, and the five published seeds were selected "
-        "from ten candidates by epoch-14 fold-test Macro-F1. These are not "
+        "from ten candidates by epoch-11 fold-test Macro-F1. These are not "
         "independent test estimates.",
         flush=True,
     )
@@ -228,7 +248,7 @@ def main() -> None:
 
     args.output_root.mkdir(parents=True, exist_ok=True)
     protocol = {
-        "protocol": "phq5_balanced_posthoc_v1",
+        "protocol": "phq5_balanced_ctc_posthoc_v1",
         "manifest_config": str(
             (args.manifest_root / "manifest_config.json").resolve()
         ),
@@ -240,9 +260,16 @@ def main() -> None:
         "test_used_for_seed_selection": True,
         "folds": args.folds,
         "epochs": EPOCHS,
+        "schedule_epochs": SCHEDULE_EPOCHS,
         "selected_epoch": SELECTED_EPOCH,
         "threshold": 0.5,
-        "ctc_enabled": False,
+        "ctc_enabled": True,
+        "ctc_mode": "shared_grad_norm",
+        "ctc_target_mode": "neutral",
+        "ctc_k": 10,
+        "ctc_grad_target_ratio": 0.0001,
+        "global_unit_stride": 1,
+        "unit_root": str(args.unit_root.resolve()),
         "ensemble": False,
         "test_selected_epoch": True,
         "independent_test_performance": False,

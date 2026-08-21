@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -19,6 +20,7 @@ from run_phq_balanced_cv import (  # noqa: E402
     SEED_CANDIDATE_COUNT,
     SEED_SELECTION,
     SELECTED_EPOCH,
+    SCHEDULE_EPOCHS,
     SEEDS,
     command_for,
     validate_protocol,
@@ -30,6 +32,50 @@ from summarize_phq_balanced_cv import (  # noqa: E402
 
 
 class PhqBalancedWorkflowTest(unittest.TestCase):
+    def test_canonical_result_is_the_epoch_11_ctc_protocol(self) -> None:
+        result = json.loads(
+            (
+                ROOT / "artifacts" / "phq5_default" / "result.json"
+            ).read_text()
+        )
+        self.assertEqual(result["protocol"], "phq5_balanced_ctc_posthoc_v1")
+        self.assertEqual(
+            result["selection"]["selected_seeds"], list(SEEDS)
+        )
+        self.assertEqual(result["selection"]["selected_epoch"], 11)
+        self.assertTrue(result["training"]["ctc_enabled"])
+        self.assertEqual(result["training"]["ctc_k"], 10)
+        self.assertEqual(
+            result["training"]["ctc_grad_target_ratio"], 0.0001
+        )
+        self.assertAlmostEqual(
+            result["mean"]["f1_macro"], 0.5675702656066554
+        )
+        self.assertAlmostEqual(
+            result["sample_sd"]["f1_macro"], 0.009215466786940213
+        )
+        checkpoint = (
+            ROOT
+            / "artifacts"
+            / "phq5_default"
+            / result["representative_checkpoint"]["path"]
+        )
+        digest = hashlib.sha256()
+        with checkpoint.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        self.assertEqual(
+            digest.hexdigest(),
+            result["representative_checkpoint"]["sha256"],
+        )
+        metadata = json.loads(
+            checkpoint.with_suffix(".pt.metadata.json").read_text()
+        )
+        self.assertEqual(metadata["epoch"], 11)
+        self.assertEqual(metadata["seed"], 2026)
+        self.assertEqual(metadata["fold"], 4)
+        self.assertEqual(metadata["config"]["schedule_epochs"], 15)
+
     def build_manifest_root(self, root: Path) -> tuple[Path, Path]:
         source = root / "source"
         (source / "pool").mkdir(parents=True)
@@ -71,12 +117,17 @@ class PhqBalancedWorkflowTest(unittest.TestCase):
             frame.to_csv(fold_root / "test_manifest.csv", index=False)
         return manifests, source
 
-    def test_runner_fixes_shared_epoch_14_protocol(self) -> None:
+    def test_runner_fixes_shared_epoch_11_ctc_protocol(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             manifests, source = self.build_manifest_root(root)
+            unit_root = root / "units"
+            unit_root.mkdir()
+            for fold in range(5):
+                (unit_root / f"fold_{fold}_k10_units.npz").write_bytes(b"unit")
             args = Namespace(
                 manifest_root=manifests,
+                unit_root=unit_root,
                 output_root=root / "runs",
                 python=sys.executable,
                 gpu="0",
@@ -97,16 +148,24 @@ class PhqBalancedWorkflowTest(unittest.TestCase):
                 output_dir=root / "run",
             )
             joined = " ".join(command)
-            self.assertEqual(SEEDS, (2026, 2024, 12345, 1234567, 2027))
+            self.assertEqual(SEEDS, (12345, 2024, 2028, 2026, 2025))
             self.assertEqual(SEED_CANDIDATE_COUNT, 10)
             self.assertEqual(
                 SEED_SELECTION,
-                "posthoc_top5_by_epoch14_test_macro_f1",
+                "posthoc_top5_by_epoch11_test_macro_f1",
             )
-            self.assertEqual(SELECTED_EPOCH, 14)
-            self.assertIn("--ctc-enabled 0", joined)
+            self.assertEqual(SELECTED_EPOCH, 11)
+            self.assertEqual(SCHEDULE_EPOCHS, 15)
+            self.assertIn("--ctc-enabled 1", joined)
+            self.assertIn("--ctc-k 10", joined)
+            self.assertIn("--ctc-grad-target-ratio 0.0001", joined)
+            self.assertIn("--ctc-loss-policy normalized_fp32", joined)
+            self.assertIn("--temporal-target-policy global_units_ctc", joined)
+            self.assertIn("--global-unit-stride 1", joined)
+            self.assertIn("fold_2_k10_units.npz", joined)
             self.assertIn("--split-mode test_tune", joined)
-            self.assertIn("--epochs 15", joined)
+            self.assertIn("--epochs 11", joined)
+            self.assertIn("--schedule-epochs 15", joined)
             self.assertIn("--eval-crop-policy multi3", joined)
             self.assertIn("fold_2/train_dev_manifest.csv", joined)
             self.assertIn("fold_2/test_manifest.csv", joined)

@@ -9,14 +9,41 @@ import numpy as np
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[1] / "data_preparation")
+)
 
 from global_unit_cache import (  # noqa: E402
     PackedUnitCache,
     save_packed_unit_cache,
 )
+from prepare_phq_ctc_units import (  # noqa: E402
+    deterministic_identifier_order,
+    subject_balanced_fit_matrix,
+)
 
 
 class GlobalUnitCacheTest(unittest.TestCase):
+    def test_codebook_sampling_is_deterministic_and_subject_balanced(self):
+        values = {
+            "300": np.arange(24, dtype=np.float32).reshape(12, 2),
+            "301": np.arange(40, dtype=np.float32).reshape(20, 2),
+        }
+        first, frames = subject_balanced_fit_matrix(
+            values, ["300", "301"], cap=15, seed=123
+        )
+        second, repeated_frames = subject_balanced_fit_matrix(
+            values, ["301", "300"], cap=15, seed=123
+        )
+        self.assertEqual(frames, 12)
+        self.assertEqual(repeated_frames, 12)
+        np.testing.assert_array_equal(first, second)
+        self.assertEqual(first.shape, (24, 2))
+        self.assertEqual(
+            deterministic_identifier_order(["b", "a", "c"], seed=123),
+            deterministic_identifier_order(["c", "b", "a"], seed=123),
+        )
+
     def test_round_trip_and_crop_lookup(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "fold0_k10.npz"

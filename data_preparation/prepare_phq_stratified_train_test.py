@@ -11,14 +11,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+from sklearn.model_selection import StratifiedKFold
 
 from preprocess import OFFSET_MAP, process_subject
 
 
 NAMESPACE = "phq5_stratified_all189_offset_v1"
 OUTER_FOLDS = 5
-INNER_DEV_SUBJECTS = 31
 PHQ_BIN_EDGES = (-1, 4, 9, 14, 19, 24)
 PHQ_BIN_LABELS = ("0-4", "5-9", "10-14", "15-19", "20-24")
 EXPECTED_BIN_COUNTS = {
@@ -45,7 +44,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--audio-dir", type=Path)
     parser.add_argument("--trans-dir", type=Path)
-    parser.add_argument("--offset", action="store_true")
     parser.add_argument("--out-root", required=True, type=Path)
     parser.add_argument("--seed", type=int, default=123)
     return parser.parse_args()
@@ -119,11 +117,9 @@ def prepare_audio_pool(
     pool_dir: Path,
     audio_dir: Path,
     transcript_dir: Path,
-    offset: bool,
 ) -> dict[int, int]:
     pool_dir.mkdir(parents=True, exist_ok=True)
     available: dict[int, int] = {}
-    offset_map = OFFSET_MAP if offset else {}
     for row in subjects.itertuples(index=False):
         subject = int(row.Participant_ID)
         required = 46 if int(row.binary) else 20
@@ -134,7 +130,7 @@ def prepare_audio_pool(
             str(pool_dir),
             str(audio_dir),
             str(transcript_dir),
-            offset_map=offset_map,
+            offset_map=OFFSET_MAP,
             sample_mode="fixed",
             fixed_n=required,
             min_duration=1.0,
@@ -286,32 +282,6 @@ def audit_outer_assignment(assigned: pd.DataFrame) -> None:
         raise RuntimeError(f"Invalid outer PHQ balance:\n{table}")
 
 
-def assign_inner_roles(
-    outer_train: pd.DataFrame,
-    *,
-    seed: int,
-    fold: int,
-) -> pd.DataFrame:
-    assigned = outer_train.copy().reset_index(drop=True)
-    assigned["inner_role"] = "train"
-    splitter = StratifiedShuffleSplit(
-        n_splits=1,
-        test_size=INNER_DEV_SUBJECTS,
-        random_state=seed * 100 + fold,
-    )
-    _, dev_positions = next(
-        splitter.split(assigned, assigned["phq_bin"])
-    )
-    assigned.loc[dev_positions, "inner_role"] = "dev"
-    if (
-        len(assigned.loc[assigned["inner_role"] == "dev"])
-        != INNER_DEV_SUBJECTS
-        or set(assigned["inner_role"]) != {"train", "dev"}
-    ):
-        raise RuntimeError(f"Fold {fold}: invalid inner assignment")
-    return assigned
-
-
 def describe(frame: pd.DataFrame, *, fold: int, split: str) -> dict:
     counts = (
         frame["phq_bin"]
@@ -366,28 +336,18 @@ def write_products(
 
     manifest_paths: list[Path] = []
     distribution_rows: list[dict] = []
-    inner_paths: dict[str, str] = {}
     pool_dir = source_data_root / "pool"
     for fold in range(OUTER_FOLDS):
         test = outer.loc[outer["outer_fold"] == fold].copy()
         train_dev = outer.loc[outer["outer_fold"] != fold].copy()
-        inner = assign_inner_roles(train_dev, seed=seed, fold=fold)
-        train = inner.loc[inner["inner_role"] == "train"].copy()
-        dev = inner.loc[inner["inner_role"] == "dev"].copy()
         if (
-            set(train["Participant_ID"]) & set(dev["Participant_ID"])
-            or set(train_dev["Participant_ID"]) & set(test["Participant_ID"])
+            set(train_dev["Participant_ID"]) & set(test["Participant_ID"])
             or len(set(train_dev["Participant_ID"]) | set(test["Participant_ID"]))
             != 189
         ):
             raise RuntimeError(f"Fold {fold}: subject leakage")
 
-        inner_path = assignments_root / f"fold_{fold}_inner_assignments.csv"
-        inner.to_csv(inner_path, index=False)
-        inner_paths[str(fold)] = str(inner_path.resolve())
         for split, frame in (
-            ("train", train),
-            ("dev", dev),
             ("train_dev", train_dev),
             ("test", test),
         ):
@@ -395,8 +355,6 @@ def write_products(
 
         fold_root = manifests_root / f"fold_{fold}"
         specs = (
-            ("train_manifest.csv", train, "train"),
-            ("dev_manifest.csv", dev, "val"),
             ("train_dev_manifest.csv", train_dev, "train"),
             ("test_manifest.csv", test, "val"),
         )
@@ -414,13 +372,8 @@ def write_products(
     distribution = pd.DataFrame(distribution_rows)
     distribution_path = assignments_root / "distributions.csv"
     distribution.to_csv(distribution_path, index=False)
-    dev = distribution.loc[distribution["split"] == "dev"]
-    for label in PHQ_BIN_LABELS:
-        if dev[f"phq_{label}_count"].nunique() != 1:
-            raise RuntimeError(f"Inner-dev {label} count differs across folds")
     return manifest_paths, {
         "outer_assignments": str(outer_path.resolve()),
-        "inner_assignments": inner_paths,
         "distributions": str(distribution_path.resolve()),
         "distributions_sha256": file_sha256(distribution_path),
     }
@@ -432,7 +385,7 @@ def main() -> None:
         raise FileExistsError(f"Output is not empty: {args.out_root}")
     subjects, metadata_paths = load_all_subjects(args.label_dir)
     subjects = add_phq_bins(subjects)
-    variant = "offset" if args.offset else "nooffset"
+    variant = "offset"
     args.out_root.mkdir(parents=True, exist_ok=True)
     if args.source_data_root is None:
         if args.audio_dir is None or args.trans_dir is None:
@@ -445,7 +398,6 @@ def main() -> None:
             pool_dir=source_data_root / "pool",
             audio_dir=args.audio_dir,
             transcript_dir=args.trans_dir,
-            offset=args.offset,
         )
         source_config: dict[str, str] | None = None
     else:
@@ -475,7 +427,6 @@ def main() -> None:
         "subjects": 189,
         "variant": variant,
         "outer_folds": OUTER_FOLDS,
-        "inner_dev_subjects": INNER_DEV_SUBJECTS,
         "assignment_seed": args.seed,
         "primary_stratification": ["phq_bin"],
         "phq_bin_edges": list(PHQ_BIN_EDGES),

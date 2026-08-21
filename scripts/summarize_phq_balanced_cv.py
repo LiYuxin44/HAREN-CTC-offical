@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize the fixed epoch-14 PHQ-balanced 5-fold result."""
+"""Summarize the fixed epoch-11 PHQ-balanced 5-fold CTC result."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from sklearn.metrics import (
 
 from run_phq_balanced_cv import (
     FOLDS,
+    SCHEDULE_EPOCHS,
     SEED_CANDIDATE_COUNT,
     SEED_SELECTION,
     SELECTED_EPOCH,
@@ -126,8 +127,8 @@ def main() -> None:
         (args.manifest_root / "manifest_config.json").read_text()
     )
     variant = str(manifest_config.get("variant", ""))
-    if variant not in {"offset", "nooffset"}:
-        raise RuntimeError("Manifest config has no supported data variant")
+    if variant != "offset":
+        raise RuntimeError("Manifest config is not the offset protocol")
     rows = []
     pooled_predictions = []
     for seed in SEEDS:
@@ -137,8 +138,16 @@ def main() -> None:
             config = json.loads((run_dir / "run_config.json").read_text())
             if (
                 config.get("seeds") != [seed]
-                or config.get("epochs") != 15
-                or config.get("ctc_enabled") is not False
+                or config.get("epochs") != SELECTED_EPOCH
+                or config.get("schedule_epochs") != SCHEDULE_EPOCHS
+                or config.get("ctc_enabled") is not True
+                or config.get("ctc_mode") != "shared_grad_norm"
+                or config.get("ctc_target_mode") != "neutral"
+                or config.get("ctc_clusters") != 10
+                or config.get("ctc_grad_target_ratio") != 0.0001
+                or config.get("global_unit_stride") != 1
+                or config.get("temporal_target_policy")
+                != "global_units_ctc"
                 or config.get("split_mode") != "test_tune"
                 or config.get("eval_crop_policy") != "multi3"
             ):
@@ -178,7 +187,7 @@ def main() -> None:
         if column not in {"seed", "subjects", "epoch", "threshold"}
     ]
     result = {
-        "protocol": "phq5_balanced_posthoc_v1",
+        "protocol": "phq5_balanced_ctc_posthoc_v1",
         "subjects": 189,
         "folds": 5,
         "seeds": list(SEEDS),
@@ -188,9 +197,15 @@ def main() -> None:
         "post_hoc_seed_selection": True,
         "test_used_for_seed_selection": True,
         "selected_epoch": SELECTED_EPOCH,
+        "schedule_epochs": SCHEDULE_EPOCHS,
         "epoch_selection": "shared_test_selected",
         "threshold": 0.5,
-        "ctc_enabled": False,
+        "ctc_enabled": True,
+        "ctc_mode": "shared_grad_norm",
+        "ctc_target_mode": "neutral",
+        "ctc_k": 10,
+        "ctc_grad_target_ratio": 0.0001,
+        "global_unit_stride": 1,
         "ensemble_computed": False,
         "test_selected_epoch": True,
         "independent_test_performance": False,

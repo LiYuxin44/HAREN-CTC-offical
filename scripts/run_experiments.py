@@ -9,13 +9,13 @@ Examples
 --------
 # Dev-only hyperparameter trial:
   python scripts/run_experiments.py \
-      --data-root ./processed_data-utterance-fixed-split-nooffset \
+      --data-root ./datasets/fixed_corrected_offset \
       --lr 5e-5 --weight-decay 1e-4 --dropout 0.3 \
       --ctc-enabled 1 --test-policy none --run-tag hpo_trial
 
 # One-time test evaluation of a frozen dev-selected checkpoint:
   python scripts/run_experiments.py \
-      --data-root ./processed_data-utterance-fixed-split-nooffset \
+      --data-root ./datasets/fixed_corrected_offset \
       --seeds 123 --test-policy final_only \
       --eval-checkpoint /path/to/seed123_best_dev.pt --run-tag final_test
 """
@@ -42,12 +42,20 @@ def main():
     ap.add_argument('--seeds', default=PAPER_SEEDS,
                     help='Comma-separated seeds (default: the 5 paper seeds).')
     ap.add_argument('--epochs', type=int, default=15)
-    ap.add_argument('--batch-size', type=int, default=16)
+    ap.add_argument(
+        '--schedule-epochs',
+        type=int,
+        help=(
+            'Optimizer/CTC schedule horizon; defaults to --epochs. Set this '
+            'above --epochs only to reproduce an earlier point from a longer run.'
+        ),
+    )
+    ap.add_argument('--batch-size', type=int, default=8)
     ap.add_argument('--lr', default='1e-5')
-    ap.add_argument('--weight-decay', default='1e-4')
-    ap.add_argument('--dropout', default='0.3')
+    ap.add_argument('--weight-decay', default='1e-5')
+    ap.add_argument('--dropout', default='0.5')
     ap.add_argument('--ctc-enabled', type=int, choices=(0, 1), default=1)
-    ap.add_argument('--ctc-weight', default='0.05')
+    ap.add_argument('--ctc-weight', default='0.005')
     ap.add_argument(
         '--ctc-mode',
         choices=('fixed', 'adaptive_ratio', 'shared_grad_norm'),
@@ -181,7 +189,7 @@ def main():
                     help='Exact output directory (recommended for parallel jobs).')
     ap.add_argument(
         '--split-mode',
-        choices=('fixed', 'test_tune'),
+        choices=('fixed', 'test_tune', 'eval_only'),
         default='fixed',
     )
     ap.add_argument('--train-manifest', default='',
@@ -193,6 +201,10 @@ def main():
     ap.add_argument('--prefetch-factor', type=int, default=2)
     ap.add_argument('--log-interval', type=int, default=25)
     args = ap.parse_args()
+    if args.schedule_epochs is None:
+        args.schedule_epochs = args.epochs
+    if args.epochs <= 0 or args.schedule_epochs < args.epochs:
+        ap.error('--schedule-epochs must be at least --epochs')
     if args.ctc_k <= 0:
         ap.error('--ctc-k must be positive')
     if args.ctc_grad_update_interval <= 0:
@@ -208,6 +220,7 @@ def main():
     if (
         args.ctc_enabled
         and args.temporal_target_policy.startswith('global_units_')
+        and args.split_mode != 'eval_only'
         and not args.global_unit_cache
     ):
         ap.error(
@@ -220,11 +233,24 @@ def main():
             '--split-mode test_tune requires --train-manifest and --val-manifest'
         )
     if (
-        args.split_mode == 'test_tune'
+        args.split_mode in {'test_tune', 'eval_only'}
         and args.fold_index not in range(5)
     ):
-        ap.error('--split-mode test_tune requires --fold-index in 0..4')
-    if (args.test_policy == 'final_only') != bool(args.eval_checkpoint):
+        ap.error(
+            f'--split-mode {args.split_mode} requires --fold-index in 0..4'
+        )
+    if args.split_mode == 'eval_only':
+        if (
+            not args.eval_checkpoint
+            or args.test_policy != 'none'
+            or args.train_manifest
+            or not args.val_manifest
+        ):
+            ap.error(
+                'eval_only requires --eval-checkpoint, --val-manifest, '
+                '--test-policy none, and no --train-manifest'
+            )
+    elif (args.test_policy == 'final_only') != bool(args.eval_checkpoint):
         ap.error(
             '--test-policy final_only requires --eval-checkpoint, and '
             '--eval-checkpoint is forbidden with --test-policy none'
@@ -245,6 +271,7 @@ def main():
     env['DATA_ROOT'] = args.data_root
     env['SEEDS'] = args.seeds
     env['NUM_EPOCHS'] = str(args.epochs)
+    env['SCHEDULE_EPOCHS'] = str(args.schedule_epochs)
     env['BATCH_SIZE'] = str(args.batch_size)
     env['LR'] = str(args.lr)
     env['WEIGHT_DECAY'] = str(args.weight_decay)
@@ -310,6 +337,7 @@ def main():
     cmd = [args.python, '-u', args.script]
     print('[run] ' + ' '.join(f'{k}={env[k]}' for k in
           ('CUDA_VISIBLE_DEVICES', 'DATA_ROOT', 'SEEDS', 'NUM_EPOCHS',
+           'SCHEDULE_EPOCHS',
            'BATCH_SIZE', 'LR', 'WEIGHT_DECAY', 'DROPOUT', 'CTC_ENABLED',
            'CTC_WEIGHT', 'CTC_MODE', 'CTC_TARGET_MODE', 'CTC_TARGET_RATIO',
            'CTC_K', 'CTC_GRAD_TARGET_RATIO',
@@ -335,7 +363,7 @@ def main():
         print(f"[run] EVAL_CHECKPOINT={env['EVAL_CHECKPOINT']}")
     if args.resume_checkpoint:
         print(f"[run] RESUME_CHECKPOINT={env['RESUME_CHECKPOINT']}")
-    if args.split_mode == 'test_tune':
+    if args.split_mode in {'test_tune', 'eval_only'}:
         print(
             '[run] '
             f"TRAIN_MANIFEST={env['TRAIN_MANIFEST']} "

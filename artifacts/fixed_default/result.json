@@ -1,0 +1,203 @@
+{
+  "protocol": "fixed_offset_ctc_default_v1",
+  "data": {
+    "split": "official_fixed",
+    "variant": "corrected_offset",
+    "official_test_previously_accessed": true
+  },
+  "training": {
+    "config_id": "fixed_default",
+    "epochs": 15,
+    "batch_size": 8,
+    "learning_rate": 1e-05,
+    "weight_decay": 1e-05,
+    "dropout": 0.5,
+    "ctc_enabled": true,
+    "ctc_weight": 0.005,
+    "ctc_mode": "fixed",
+    "ctc_target_mode": "label_shifted",
+    "ctc_k": 10,
+    "ctc_warmup_epochs": 5,
+    "ctc_loss_policy": "legacy_mean",
+    "temporal_target_policy": "local_kmeans_ctc"
+  },
+  "ctc_hpo": {
+    "selection_data": "official_fixed_dev_only",
+    "test_used_for_configuration_or_checkpoint_selection": false,
+    "screen": {
+      "seed": 123,
+      "candidate_count": 17,
+      "families": [
+        "fixed_weight",
+        "adaptive_loss_ratio",
+        "shared_gradient_ratio"
+      ],
+      "finalist_count": 3
+    },
+    "confirmation": {
+      "seeds": [
+        123,
+        1234,
+        12345,
+        123456,
+        1234567
+      ],
+      "ranking": [
+        "five_seed_mean_dev_f1_macro_desc",
+        "five_seed_mean_dev_auc_desc",
+        "config_id"
+      ],
+      "winner": "fixed_default"
+    },
+    "interpretation": "Configuration and per-seed checkpoints were selected only with the official fixed Dev split. The official fixed Test split had already been accessed by earlier experiments, so the final Test result is not an independent untouched-test estimate."
+  },
+  "selection": {
+    "checkpoint_policy": "per_seed_best_dev_subject_macro_f1",
+    "seed_policy": "predeclared_five",
+    "test_used_for_training_or_selection": false,
+    "seeds": [
+      123,
+      1234,
+      12345,
+      123456,
+      1234567
+    ],
+    "checkpoint_epochs": {
+      "123": 7,
+      "1234": 10,
+      "12345": 4,
+      "123456": 8,
+      "1234567": 3
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 123,
+      "checkpoint_epoch": 7,
+      "dev": {
+        "f1_macro": 0.668560606060606,
+        "auc": 0.5978260869565217
+      },
+      "test": {
+        "f1_macro": 0.5761273209549072,
+        "auc": 0.48051948051948057
+      }
+    },
+    {
+      "seed": 1234,
+      "checkpoint_epoch": 10,
+      "dev": {
+        "f1_macro": 0.5955555555555556,
+        "auc": 0.5942028985507246
+      },
+      "test": {
+        "f1_macro": 0.5320056899004267,
+        "auc": 0.49999999999999994
+      }
+    },
+    {
+      "seed": 12345,
+      "checkpoint_epoch": 4,
+      "dev": {
+        "f1_macro": 0.6499999999999999,
+        "auc": 0.6557971014492754
+      },
+      "test": {
+        "f1_macro": 0.5427547363031233,
+        "auc": 0.5367965367965368
+      }
+    },
+    {
+      "seed": 123456,
+      "checkpoint_epoch": 8,
+      "dev": {
+        "f1_macro": 0.5790934320074006,
+        "auc": 0.5579710144927537
+      },
+      "test": {
+        "f1_macro": 0.5930735930735931,
+        "auc": 0.487012987012987
+      }
+    },
+    {
+      "seed": 1234567,
+      "checkpoint_epoch": 3,
+      "dev": {
+        "f1_macro": 0.5584524810765349,
+        "auc": 0.5144927536231884
+      },
+      "test": {
+        "f1_macro": 0.4788306451612903,
+        "auc": 0.5627705627705628
+      }
+    }
+  ],
+  "mean": {
+    "dev": {
+      "f1_macro": 0.6103324149400194,
+      "auc": 0.5840579710144927
+    },
+    "test": {
+      "f1_macro": 0.5445583970786682,
+      "auc": 0.5134199134199134
+    }
+  },
+  "sample_sd": {
+    "dev": {
+      "f1_macro": 0.047036679068782415,
+      "auc": 0.05234222047762649
+    },
+    "test": {
+      "f1_macro": 0.044247266070736035,
+      "auc": 0.03514900935772562
+    }
+  },
+  "best_dev_seed": {
+    "seed": 123,
+    "checkpoint_epoch": 7,
+    "dev": {
+      "f1_macro": 0.668560606060606,
+      "auc": 0.5978260869565217
+    },
+    "corresponding_test": {
+      "f1_macro": 0.5761273209549072,
+      "auc": 0.48051948051948057
+    }
+  },
+  "local_checkpoints": {
+    "tracked_by_git": false,
+    "directory": "checkpoints/fixed_default",
+    "files": [
+      {
+        "seed": 123,
+        "path": "seed123_best_dev.pt",
+        "bytes": 71572710,
+        "sha256": "2c90911f9aa21d24921d20297d374e063bf8417e26e217db53fe2d6195d94858"
+      },
+      {
+        "seed": 1234,
+        "path": "seed1234_best_dev.pt",
+        "bytes": 71572751,
+        "sha256": "7222f1f4e61a9612d3c49de6a1f9b67cab600656af7b77c5e6ec245f6fc154c0"
+      },
+      {
+        "seed": 12345,
+        "path": "seed12345_best_dev.pt",
+        "bytes": 71572792,
+        "sha256": "b547fc217de5cc5ee8f49de915a296286873022cc60f5452a465f4a2c4d81da8"
+      },
+      {
+        "seed": 123456,
+        "path": "seed123456_best_dev.pt",
+        "bytes": 71572897,
+        "sha256": "1541e6c44ac2c34787ea37bd3e6ebfe01939d040fde637bf570274af5a15c860"
+      },
+      {
+        "seed": 1234567,
+        "path": "seed1234567_best_dev.pt",
+        "bytes": 71573002,
+        "sha256": "94dfdc3aa1bb83bdff922cb0635061ed3cee2d7104162ce8591daf40271045ea"
+      }
+    ]
+  }
+}

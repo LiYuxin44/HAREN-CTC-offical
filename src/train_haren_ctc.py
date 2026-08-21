@@ -33,17 +33,18 @@ Environment variables (HPO and final runs pass these explicitly)
 ---------------------------------------------------------------
   SEEDS           comma list of seeds        (default 123,1234,12345,123456,1234567)
   NUM_EPOCHS      epochs per seed             (default 15)
-  BATCH_SIZE      batch size                  (default 16)
+  SCHEDULE_EPOCHS optimizer/CTC horizon       (default NUM_EPOCHS)
+  BATCH_SIZE      batch size                  (default 8)
   LR              AdamW learning rate         (default 1e-5)
-  DROPOUT         head dropout                 (default 0.3)
-  WEIGHT_DECAY    AdamW weight decay           (default 1e-4)
+  DROPOUT         head dropout                 (default 0.5)
+  WEIGHT_DECAY    AdamW weight decay           (default 1e-5)
   CTC_ENABLED     "1" enables auxiliary CTC    (default 1)
-  CTC_WEIGHT      fixed/max CTC coefficient    (default 0.05)
+  CTC_WEIGHT      fixed/max CTC coefficient    (default 0.005)
   CTC_MODE        fixed | adaptive_ratio       (default fixed)
   CTC_TARGET_MODE label_shifted | neutral      (default label_shifted)
   CTC_TARGET_RATIO adaptive weighted-loss cap  (default 0.1)
   TEST_POLICY     none | final_only            (default none)
-  DATA_ROOT       dir containing train/val/test (default processed_data-utterance-fixed-split)
+  DATA_ROOT       dir containing train/val/test (default datasets/fixed_corrected_offset)
   RUN_TAG         suffix appended to the log dir name
 
 The WavLM path keeps Dataset-level 10-second zero-padding/full masks. The
@@ -109,13 +110,14 @@ from training_stability import (
 )
 
 # ───────────── 常量 / 路径 ─────────────
-SEEDS           = [123, 1234, 12345, 123456, 1234567]   # 五个随机种子
+SEEDS           = [123, 1234, 12345, 123456, 1234567]
 if os.environ.get('SEEDS'): SEEDS = [int(x) for x in os.environ['SEEDS'].split(',')]  # override for smoke
 NUM_EPOCHS      = int(os.environ.get('NUM_EPOCHS','15'))
-BATCH_SIZE      = int(os.environ.get('BATCH_SIZE','16'))
+SCHEDULE_EPOCHS = int(os.environ.get('SCHEDULE_EPOCHS', str(NUM_EPOCHS)))
+BATCH_SIZE      = int(os.environ.get('BATCH_SIZE','8'))
 LR              = float(os.environ.get('LR', '1e-5'))
-DROPOUT         = float(os.environ.get('DROPOUT', '0.3'))
-WEIGHT_DECAY    = float(os.environ.get('WEIGHT_DECAY', '1e-4'))
+DROPOUT         = float(os.environ.get('DROPOUT', '0.5'))
+WEIGHT_DECAY    = float(os.environ.get('WEIGHT_DECAY', '1e-5'))
 TRAINING_PROTOCOL = 'manuscript_final'
 SPLIT_MODE      = os.environ.get('SPLIT_MODE', 'fixed').strip().lower()
 FOLD_INDEX      = int(os.environ.get('FOLD_INDEX', '-1'))
@@ -128,7 +130,7 @@ CTC_TARGET_MODE = os.environ.get(
 ).strip().lower()
 TEST_POLICY     = os.environ.get('TEST_POLICY', 'none').strip().lower()
 EVAL_CHECKPOINT = os.environ.get('EVAL_CHECKPOINT', '').strip()
-CTC_WEIGHT = float(os.environ.get('CTC_WEIGHT', '0.05'))
+CTC_WEIGHT = float(os.environ.get('CTC_WEIGHT', '0.005'))
 CTC_WARMUP_EPOCHS = int(os.environ.get('CTC_WARMUP_EPOCHS', '5'))
 CTC_TARGET_RATIO = float(os.environ.get('CTC_TARGET_RATIO', '0.1'))
 CTC_K = int(os.environ.get('CTC_K', '10'))
@@ -216,7 +218,7 @@ TEMPORAL_EVAL_DIAGNOSTICS = (
 )
 
 _DATA_ROOT = os.environ.get(
-    'DATA_ROOT', './processed_data-utterance-fixed-split-nooffset'
+    'DATA_ROOT', './datasets/fixed_corrected_offset'
 )
 DIR_TRAIN = os.path.join(_DATA_ROOT, 'train')
 DIR_VAL   = os.path.join(_DATA_ROOT, 'val')
@@ -229,6 +231,11 @@ RUN_TAG        = os.environ.get('RUN_TAG', '').strip()
 if CTC_ENABLED not in {'0', '1'}:
     raise ValueError(f"CTC_ENABLED must be '0' or '1', got {CTC_ENABLED!r}")
 CTC_ENABLED = CTC_ENABLED == '1'
+if NUM_EPOCHS <= 0 or SCHEDULE_EPOCHS < NUM_EPOCHS:
+    raise ValueError(
+        "NUM_EPOCHS must be positive and SCHEDULE_EPOCHS must be at least "
+        "NUM_EPOCHS"
+    )
 if CTC_MODE not in {'fixed', 'adaptive_ratio', 'shared_grad_norm'}:
     raise ValueError(f"Unsupported CTC_MODE: {CTC_MODE!r}")
 if CTC_TARGET_MODE not in {'label_shifted', 'neutral'}:
@@ -417,7 +424,8 @@ if (
     )
 
 DEFAULT_LOG_DIR = (
-    f"logs_{SPLIT_MODE}_{TRAINING_PROTOCOL}_CTC005"
+    f"logs_{SPLIT_MODE}_{TRAINING_PROTOCOL}_CTC"
+    f"{str(CTC_WEIGHT).replace('.', 'p')}"
     + (('_' + RUN_TAG) if RUN_TAG else '')
 )
 LOG_DIR       = os.environ.get('OUTPUT_DIR', '').strip() or DEFAULT_LOG_DIR
@@ -998,7 +1006,7 @@ class WavLMClassificationModel(nn.Module):
         num_labels=1,
         num_groups=2,
         dropout=0.3,
-        ctc_weight=0.05,
+        ctc_weight=0.005,
         k=10,
         routing_init_policy="legacy",
         head_arch_policy="legacy_17m",
@@ -1470,17 +1478,25 @@ global_unit_cache = (
     if (
         CTC_ENABLED
         and TEMPORAL_TARGET_POLICY.startswith('global_units_')
+        and (SPLIT_MODE != 'eval_only' or TEMPORAL_EVAL_DIAGNOSTICS)
     )
     else None
 )
 if global_unit_cache is not None:
     cache_metadata = global_unit_cache.metadata
     cache_ids = set(global_unit_cache.identifiers)
+    cache_layout = (
+        cache_metadata.get('codebook_fit_split'),
+        cache_metadata.get('cached_roles'),
+    )
+    accepted_cache_layouts = {
+        ('exact_fold_train_manifest_ids_only', ('train', 'dev')),
+        ('exact_outer_train_dev_manifest_ids_only', ('train_dev',)),
+    }
     if (
         int(cache_metadata.get('frame_stride_samples', -1)) != 320
-        or cache_metadata.get('codebook_fit_split')
-        != 'exact_fold_train_manifest_ids_only'
-        or cache_metadata.get('cached_roles') != ['train', 'dev']
+        or (cache_layout[0], tuple(cache_layout[1] or ()))
+        not in accepted_cache_layouts
         or cache_metadata.get('excluded_roles') != ['test']
         or (
             FOLD_INDEX in range(5)
@@ -1522,7 +1538,7 @@ if global_unit_cache is not None:
             raise RuntimeError(
                 "Global-unit cache does not match the active train manifest"
             )
-    if VAL_WAVS:
+    if VAL_WAVS and SPLIT_MODE != 'test_tune':
         validation_unit_ids = {Path(path).stem for path in VAL_WAVS}
         if (
             cache_metadata.get('dev_identifier_sha256')
@@ -1535,6 +1551,12 @@ if global_unit_cache is not None:
         ):
             raise RuntimeError(
                 "Global-unit cache does not match the active dev manifest"
+            )
+    if VAL_WAVS and SPLIT_MODE == 'test_tune':
+        heldout_unit_ids = {Path(path).stem for path in VAL_WAVS}
+        if heldout_unit_ids & cache_ids:
+            raise RuntimeError(
+                "Test-tuning heldout evaluation must be cache-disjoint"
             )
     if SPLIT_MODE == 'eval_only':
         evaluation_unit_ids = {Path(path).stem for path in TEST_WAVS}
@@ -1573,6 +1595,7 @@ with open(os.path.join(LOG_DIR, 'run_config.json'), 'w', encoding='utf-8') as co
             'data_root': _DATA_ROOT,
             'seeds': SEEDS,
             'epochs': NUM_EPOCHS,
+            'schedule_epochs': SCHEDULE_EPOCHS,
             'batch_size': BATCH_SIZE,
             'learning_rate': LR,
             'weight_decay': WEIGHT_DECAY,
@@ -1854,6 +1877,7 @@ def _save_checkpoint(
             'num_workers': NUM_WORKERS,
             'prefetch_factor': PREFETCH_FACTOR,
             'epochs': NUM_EPOCHS,
+            'schedule_epochs': SCHEDULE_EPOCHS,
             'data_root': _DATA_ROOT,
             'train_manifest': TRAIN_MANIFEST,
             'train_manifest_sha256': (
@@ -1914,6 +1938,7 @@ def _resume_config():
         'fold': FOLD_INDEX,
         'split_mode': SPLIT_MODE,
         'epochs': NUM_EPOCHS,
+        'schedule_epochs': SCHEDULE_EPOCHS,
         'batch_size': BATCH_SIZE,
         'learning_rate': LR,
         'weight_decay': WEIGHT_DECAY,
@@ -2345,7 +2370,7 @@ for seed_idx, SEED in enumerate(SEEDS):
         }
     else:
         optimizer, scheduler, optimizer_group_counts = create_opt(
-            model, LR, len(tr_loader) * NUM_EPOCHS
+            model, LR, len(tr_loader) * SCHEDULE_EPOCHS
         )
         ema = TrainableEMA(model, EMA_DECAY) if EMA_DECAY > 0 else None
         logging.info(
@@ -2364,7 +2389,7 @@ for seed_idx, SEED in enumerate(SEEDS):
             max_weight=CTC_WEIGHT,
             loss_ratio_cap=CTC_TARGET_RATIO,
             warmup_steps=int(
-                round(len(tr_loader) * NUM_EPOCHS * CTC_WARMUP_RATIO)
+                round(len(tr_loader) * SCHEDULE_EPOCHS * CTC_WARMUP_RATIO)
             ),
             update_interval=CTC_GRAD_UPDATE_INTERVAL,
             ema_decay=CTC_GRAD_EMA_DECAY,
@@ -2629,10 +2654,19 @@ for seed_idx, SEED in enumerate(SEEDS):
                 f"Checkpoint seed {checkpoint_payload['seed']} != requested {SEED}"
             )
         checkpoint_config = checkpoint_payload.get('config', {})
+        checkpoint_split_mode = checkpoint_config.get('split_mode')
+        if (
+            SPLIT_MODE == 'eval_only'
+            and checkpoint_split_mode not in {'inner', 'test_tune'}
+        ):
+            raise RuntimeError(
+                "Fold evaluation requires an inner or fixed-epoch test_tune "
+                "checkpoint"
+            )
         expected_config = {
             'protocol': TRAINING_PROTOCOL,
             'split_mode': (
-                'inner' if SPLIT_MODE == 'eval_only' else 'fixed'
+                checkpoint_split_mode if SPLIT_MODE == 'eval_only' else 'fixed'
             ),
             'aggregation': AGGREGATION_MODE,
             'learning_rate': LR,
@@ -2676,9 +2710,12 @@ for seed_idx, SEED in enumerate(SEEDS):
             'sampler': SAMPLER_NAME,
             'test_policy': 'none',
             'epochs': NUM_EPOCHS,
+            'schedule_epochs': SCHEDULE_EPOCHS,
             'wavlm_model': 'microsoft/wavlm-large',
             'wavlm_model_revision': WAVLM_MODEL_REVISION,
         }
+        if SPLIT_MODE == 'eval_only' and not TEMPORAL_EVAL_DIAGNOSTICS:
+            expected_config.pop('global_unit_cache_sha256')
         legacy_config_defaults = {
             'wavlm_mask_policy': 'legacy_full',
             'wavlm_preprocess_policy': 'legacy_prepad',
@@ -2705,6 +2742,7 @@ for seed_idx, SEED in enumerate(SEEDS):
             'lr_warmup_ratio': 0.1,
             'lr_min_ratio': 0.1,
             'ema_decay': 0.0,
+            'schedule_epochs': NUM_EPOCHS,
             'wavlm_model_revision': WAVLM_MODEL_REVISION,
         }
         for key, expected in expected_config.items():
@@ -2719,14 +2757,31 @@ for seed_idx, SEED in enumerate(SEEDS):
         checkpoint_data_root = os.path.realpath(
             checkpoint_config.get('data_root', '')
         )
-        if checkpoint_data_root != os.path.realpath(_DATA_ROOT):
+        if (
+            SPLIT_MODE != 'eval_only'
+            and checkpoint_data_root != os.path.realpath(_DATA_ROOT)
+        ):
             raise RuntimeError(
                 "Checkpoint data_root does not match the requested test variant"
             )
-        if checkpoint_payload.get('selection_policy') != 'dev_subject_metrics':
+        if (
+            SPLIT_MODE == 'eval_only'
+            and checkpoint_config.get('val_manifest_sha256')
+            != _file_sha256(VAL_MANIFEST)
+        ):
             raise RuntimeError(
-                "Evaluation requires a dev-selected checkpoint"
+                "Checkpoint held-out manifest does not match evaluation data"
             )
+        allowed_selection_policies = (
+            {'dev_subject_metrics', 'global_test_epoch_search'}
+            if SPLIT_MODE == 'eval_only'
+            else {'dev_subject_metrics'}
+        )
+        if (
+            checkpoint_payload.get('selection_policy')
+            not in allowed_selection_policies
+        ):
+            raise RuntimeError("Checkpoint selection policy is not evaluable")
         if (
             SPLIT_MODE == 'eval_only'
             and int(checkpoint_payload.get('fold', -1)) != FOLD_INDEX
