@@ -5,6 +5,7 @@ manifests, predictions, and run directories are intentionally not versioned.
 The repository retains one representative 5CV checkpoint separately. The five
 fixed-split checkpoints described below are retained only in the local,
 gitignored checkpoint directory.
+Reported metrics are rounded to three decimal places after aggregation.
 
 ## 1. Environment
 
@@ -104,20 +105,20 @@ python scripts/eval_checkpoints.py \
 
 Five-seed Dev mean at the selected per-seed checkpoints:
 
-- Dev Macro-F1 `0.6103 ± 0.0470`;
-- Dev ROC-AUC `0.5841 ± 0.0523`.
+- Dev Macro-F1 `0.610 ± 0.047`;
+- Dev ROC-AUC `0.584 ± 0.052`.
 
 The maximum individual Dev Macro-F1 is seed 123 at epoch 7. Selecting that one
-seed/epoch by Dev Macro-F1 gives Dev Macro-F1 `0.6686` and Dev ROC-AUC
-`0.5978`.
+seed/epoch by Dev Macro-F1 gives Dev Macro-F1 `0.669` and Dev ROC-AUC
+`0.598`.
 
 The corresponding frozen-checkpoint official-test runs give:
 
-- Test Macro-F1 `0.5446 ± 0.0442`;
-- Test ROC-AUC `0.5134 ± 0.0351`.
+- Test Macro-F1 `0.545 ± 0.044`;
+- Test ROC-AUC `0.513 ± 0.035`.
 
-That same seed-123/epoch-7 checkpoint has corresponding Test Macro-F1 `0.5761`
-and Test ROC-AUC `0.4805`.
+That same seed-123/epoch-7 checkpoint has corresponding Test Macro-F1 `0.576`
+and Test ROC-AUC `0.481`.
 
 These are mean ± sample SD across seeds at subject threshold 0.5, with no
 ensemble. Full-precision aggregate and per-seed values are in
@@ -222,8 +223,8 @@ python scripts/summarize_phq_balanced_cv.py \
 
 The sole 5CV result is:
 
-- Macro-F1 `0.5676 ± 0.0092`;
-- ROC-AUC `0.5476 ± 0.0134`.
+- Macro-F1 `0.568 ± 0.009`;
+- ROC-AUC `0.548 ± 0.013`.
 
 Aggregation is performed in this order:
 
@@ -244,8 +245,8 @@ external-test performance, or a conventional random-seed robustness estimate.
 trainable head for seed 2026, fold 4, epoch 11. Its SHA-256 is
 `82b7d0029249e0f8a0a1869712b23bf22a9f577419685e3d6606fc5dda4d420b`.
 This seed-fold pair had the highest historical epoch-11 fold-test Macro-F1
-(`0.7259`) among the 25 reported seed-fold models. The retained
-same-configuration CUDA replay scores `0.6119` on that fold because the original
+(`0.726`) among the 25 reported seed-fold models. The retained
+same-configuration CUDA replay scores `0.612` on that fold because the original
 training trajectory was not bitwise reproducible; both values are recorded in
 the adjacent metadata JSON.
 

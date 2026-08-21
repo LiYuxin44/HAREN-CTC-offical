@@ -39,6 +39,10 @@ class PhqBalancedWorkflowTest(unittest.TestCase):
             ).read_text()
         )
         self.assertEqual(result["protocol"], "phq5_balanced_ctc_posthoc_v1")
+        self.assertEqual(result["reporting"]["metric_decimal_places"], 3)
+        self.assertTrue(
+            result["reporting"]["aggregates_computed_from_unrounded_values"]
+        )
         self.assertEqual(
             result["selection"]["selected_seeds"], list(SEEDS)
         )
@@ -49,11 +53,13 @@ class PhqBalancedWorkflowTest(unittest.TestCase):
             result["training"]["ctc_grad_target_ratio"], 0.0001
         )
         self.assertAlmostEqual(
-            result["mean"]["f1_macro"], 0.5675702656066554
+            result["mean"]["f1_macro"], 0.568
         )
         self.assertAlmostEqual(
-            result["sample_sd"]["f1_macro"], 0.009215466786940213
+            result["sample_sd"]["f1_macro"], 0.009
         )
+        self.assertAlmostEqual(result["mean"]["auc"], 0.548)
+        self.assertAlmostEqual(result["sample_sd"]["auc"], 0.013)
         checkpoint = (
             ROOT
             / "artifacts"
@@ -75,6 +81,10 @@ class PhqBalancedWorkflowTest(unittest.TestCase):
         self.assertEqual(metadata["seed"], 2026)
         self.assertEqual(metadata["fold"], 4)
         self.assertEqual(metadata["config"]["schedule_epochs"], 15)
+        self.assertAlmostEqual(
+            metadata["evaluation_metrics"]["f1_macro"], 0.612
+        )
+        self.assertAlmostEqual(metadata["evaluation_metrics"]["auc"], 0.724)
 
     def build_manifest_root(self, root: Path) -> tuple[Path, Path]:
         source = root / "source"

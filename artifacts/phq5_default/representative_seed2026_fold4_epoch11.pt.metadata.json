@@ -1,8 +1,8 @@
 {
   "artifact_provenance": {
     "historical_epoch11_metrics": {
-      "auc": 0.7307692307692307,
-      "f1_macro": 0.7259259259259259
+      "auc": 0.731,
+      "f1_macro": 0.726
     },
     "independent_test_performance": false,
     "numerical_replay": "same configuration rerun; CUDA trajectory is not bitwise deterministic",
@@ -76,7 +76,7 @@
   },
   "epoch": 11,
   "evaluation_metrics": {
-    "auc": 0.7237762237762237,
+    "auc": 0.724,
     "cm": [
       [
         20,
@@ -87,13 +87,13 @@
         5
       ]
     ],
-    "f1_macro": 0.6118881118881119,
-    "f1_neg": 0.7692307692307693,
-    "f1_pos": 0.45454545454545453,
-    "precision_macro": 0.6118881118881119,
-    "recall_macro": 0.6118881118881119,
-    "sens": 0.45454545454545453,
-    "spec": 0.7692307692307693
+    "f1_macro": 0.612,
+    "f1_neg": 0.769,
+    "f1_pos": 0.455,
+    "precision_macro": 0.612,
+    "recall_macro": 0.612,
+    "sens": 0.455,
+    "spec": 0.769
   },
   "fold": 4,
   "seed": 2026,

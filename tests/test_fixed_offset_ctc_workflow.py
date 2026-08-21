@@ -30,6 +30,10 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
             (ROOT / "artifacts" / "fixed_default" / "result.json").read_text()
         )
         self.assertEqual(result["protocol"], "fixed_offset_ctc_default_v1")
+        self.assertEqual(result["reporting"]["metric_decimal_places"], 3)
+        self.assertTrue(
+            result["reporting"]["aggregates_computed_from_unrounded_values"]
+        )
         self.assertEqual(result["data"]["variant"], "corrected_offset")
         self.assertTrue(result["data"]["official_test_previously_accessed"])
         self.assertEqual(result["training"]["config_id"], CONFIG_ID)
@@ -54,30 +58,30 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
             result["selection"]["test_used_for_training_or_selection"]
         )
         self.assertAlmostEqual(
-            result["mean"]["dev"]["f1_macro"], 0.6103324149400194
+            result["mean"]["dev"]["f1_macro"], 0.610
         )
         self.assertAlmostEqual(
             result["sample_sd"]["dev"]["f1_macro"],
-            0.047036679068782415,
+            0.047,
         )
         self.assertAlmostEqual(
-            result["mean"]["dev"]["auc"], 0.5840579710144927
+            result["mean"]["dev"]["auc"], 0.584
         )
         self.assertAlmostEqual(
-            result["sample_sd"]["dev"]["auc"], 0.05234222047762649
+            result["sample_sd"]["dev"]["auc"], 0.052
         )
         self.assertAlmostEqual(
-            result["mean"]["test"]["f1_macro"], 0.5445583970786682
+            result["mean"]["test"]["f1_macro"], 0.545
         )
         self.assertAlmostEqual(
             result["sample_sd"]["test"]["f1_macro"],
-            0.044247266070736035,
+            0.044,
         )
         self.assertAlmostEqual(
-            result["mean"]["test"]["auc"], 0.5134199134199134
+            result["mean"]["test"]["auc"], 0.513
         )
         self.assertAlmostEqual(
-            result["sample_sd"]["test"]["auc"], 0.03514900935772562
+            result["sample_sd"]["test"]["auc"], 0.035
         )
         self.assertEqual(result["best_dev_seed"]["seed"], 123)
         self.assertEqual(result["best_dev_seed"]["checkpoint_epoch"], 7)
@@ -87,15 +91,15 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
         )
         self.assertAlmostEqual(
             result["best_dev_seed"]["dev"]["f1_macro"],
-            0.668560606060606,
+            0.669,
         )
         self.assertAlmostEqual(
             result["best_dev_seed"]["dev"]["auc"],
-            0.5978260869565217,
+            0.598,
         )
         self.assertAlmostEqual(
             result["best_dev_seed"]["corresponding_test"]["f1_macro"],
-            0.5761273209549072,
+            0.576,
         )
 
     def test_runner_pins_default_offset_ctc_training_configuration(self) -> None:

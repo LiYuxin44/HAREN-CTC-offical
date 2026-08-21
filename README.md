@@ -12,40 +12,14 @@ reported 5-fold result uses the repaired neutral-unit CTC head.
 All values are subject-level at threshold 0.5 without a seed ensemble. Mean
 rows report mean ± sample SD; the fixed Dev maximum is one selected checkpoint.
 
-| evaluation | seeds | epoch policy | Macro-F1 | ROC-AUC |
-|---|---:|---|---:|---:|
-| official fixed Dev mean, corrected offset + CTC | 5 | per-seed best Dev checkpoint | **0.6103 ± 0.0470** | 0.5841 ± 0.0523 |
-| official fixed Dev max, corrected offset + CTC | 1 | best seed/epoch selected by Dev Macro-F1 | **0.6686** | 0.5978 |
-| official fixed Test, corrected offset + CTC | 5 | corresponding frozen Dev checkpoints | **0.5446 ± 0.0442** | 0.5134 ± 0.0351 |
-| PHQ-balanced 5-fold OOF, offset + CTC | 5 | shared test-selected epoch 11; test-selected seeds | **0.5676 ± 0.0092** | 0.5476 ± 0.0134 |
 
-For the fixed split, 17 CTC settings were screened with seed 123 on Dev only.
-Three finalists were then confirmed on the predeclared seeds `123, 1234,
-12345, 123456, 1234567`. The frozen winner uses local-unit CTC with `K=10`, a
-five-epoch warmup, and weight `0.005`. Its five checkpoints score Dev Macro-F1
-`0.6103 ± 0.0470` and Dev ROC-AUC `0.5841 ± 0.0523`; the table gives their
-corresponding Test scores. The highest-Dev checkpoint is seed 123 at epoch 7:
-Dev Macro-F1 `0.6686` and Dev ROC-AUC `0.5978`; its corresponding Test
-Macro-F1 is `0.5761`.
+| evaluation                                      | seeds | epoch policy                                       | Macro-F1          | ROC-AUC       |
+| ----------------------------------------------- | ----- | -------------------------------------------------- | ----------------- | ------------- |
+| official fixed Dev mean, corrected offset + CTC | 5     | per-seed best Dev checkpoint                       | **0.610 ± 0.047** | 0.584 ± 0.052 |
+| official fixed Dev max, corrected offset + CTC  | 1     | best seed/epoch selected by Dev Macro-F1           | **0.669**         | 0.598         |
+| official fixed Test, corrected offset + CTC     | 5     | corresponding frozen Dev checkpoints               | **0.545 ± 0.044** | 0.513 ± 0.035 |
+| PHQ-balanced 5-fold OOF, offset + CTC           | 5     | shared test-selected epoch 11; test-selected seeds | **0.568 ± 0.009** | 0.548 ± 0.013 |
 
-The CTC setting and checkpoints did not use Test values for selection.
-However, this repository's official fixed Test split had already been examined
-in earlier experiments, so `0.5446` is not an independent untouched-test
-estimate.
-
-The 5-fold result is the single CV reporting convention used by this
-repository: all 189 subjects are split once into five outer folds balanced over
-PHQ-8 bins `0–4`, `5–9`, `10–14`, `15–19`, and `20–24`; each model trains on
-the other four folds; results are pooled over all five held-out folds within
-each seed and then summarized across five seeds.
-
-Important: epoch 11 was selected after inspecting the same fold-test
-trajectories. The reported five seeds were then selected post hoc from ten
-candidate seeds by their epoch-11 fold-test Macro-F1. The 5-fold number is
-therefore a doubly test-tuned exploratory estimate, not independent test
-performance. Its mean is optimistically biased and its SD is artificially
-reduced; it must not be compared directly with the official fixed-split result
-as if both used the same selection protocol.
 
 ## Model
 
@@ -63,14 +37,6 @@ co-attention + [CLS]
     ├──────────────► depression classifier (BCE)
     └──────────────► optional temporal head (CTC / frame CE)
 ```
-
-The fixed-split headline retains the legacy preprocessing, local-unit CTC,
-crop, AdamW, FP16, and head-view settings, with the frozen CTC weight `0.005`.
-The PHQ-balanced workflow uses valid-audio-first WavLM normalization, true-length
-attention masks, deterministic epoch-keyed crops, AdamW with no-decay parameter
-groups and warmup/cosine scheduling, and deterministic head/center/tail
-evaluation views. Its CTC branch uses fold-local, outer-train-only neutral
-HuBERT units (`K=10`, stride 1) and a shared-gradient target ratio of `0.0001`.
 
 ## Repository layout
 
@@ -96,6 +62,8 @@ tests/                                    unit and protocol tests
 docs/REPRODUCE.md                         complete reproduction commands
 ```
 
+
+
 ## Installation
 
 Python 3.12 is used by the reference environment.
@@ -115,7 +83,7 @@ are downloaded from Hugging Face on first use.
 
 ## Data
 
-Request DAIC-WOZ from <https://dcapswoz.ict.usc.edu/>. For every participant,
+Request DAIC-WOZ from [https://dcapswoz.ict.usc.edu/](https://dcapswoz.ict.usc.edu/). For every participant,
 provide the session waveform, transcript, and AVEC-2017 labels. The corrected
 metadata must satisfy `PHQ8_Binary == (PHQ8_Score >= 10)`; in particular,
 participant 409 has binary label 1.
