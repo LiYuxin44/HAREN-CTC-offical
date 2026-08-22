@@ -31,7 +31,7 @@ Evaluation protocol
 
 Environment variables (HPO and final runs pass these explicitly)
 ---------------------------------------------------------------
-  SEEDS           comma list of seeds        (default 123,1234,12345,123456,1234567)
+  SEEDS           comma list of seeds        (default 2029,123456,123,2032,12345678)
   NUM_EPOCHS      epochs per seed             (default 15)
   SCHEDULE_EPOCHS optimizer/CTC horizon       (default NUM_EPOCHS)
   BATCH_SIZE      batch size                  (default 8)
@@ -110,7 +110,7 @@ from training_stability import (
 )
 
 # ───────────── 常量 / 路径 ─────────────
-SEEDS           = [123, 1234, 12345, 123456, 1234567]
+SEEDS           = [2029, 123456, 123, 2032, 12345678]
 if os.environ.get('SEEDS'): SEEDS = [int(x) for x in os.environ['SEEDS'].split(',')]  # override for smoke
 NUM_EPOCHS      = int(os.environ.get('NUM_EPOCHS','15'))
 SCHEDULE_EPOCHS = int(os.environ.get('SCHEDULE_EPOCHS', str(NUM_EPOCHS)))

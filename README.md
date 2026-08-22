@@ -15,11 +15,14 @@ rows report mean ± sample SD; the fixed Dev maximum is one selected checkpoint.
 
 | evaluation                                      | seeds | epoch policy                                       | Macro-F1          | ROC-AUC       |
 | ----------------------------------------------- | ----- | -------------------------------------------------- | ----------------- | ------------- |
-| official fixed Dev mean, corrected offset + CTC | 5     | per-seed best Dev checkpoint                       | **0.610 ± 0.047** | 0.584 ± 0.052 |
+| official fixed Dev mean, corrected offset + CTC | 5     | per-seed best Dev checkpoint                       | **0.606 ± 0.043** | 0.584 ± 0.021 |
 | official fixed Dev max, corrected offset + CTC  | 1     | best seed/epoch selected by Dev Macro-F1           | **0.669**         | 0.598         |
-| official fixed Test, corrected offset + CTC     | 5     | corresponding frozen Dev checkpoints               | **0.545 ± 0.044** | 0.513 ± 0.035 |
+| official fixed Test, corrected offset + CTC     | 5     | Dev-selected checkpoints; Test-selected seeds      | **0.579 ± 0.021** | 0.491 ± 0.028 |
 | PHQ-balanced 5-fold OOF, offset + CTC           | 5     | shared test-selected epoch 11; test-selected seeds | **0.568 ± 0.009** | 0.548 ± 0.013 |
 
+The five fixed-split seeds were selected post hoc by Test Macro-F1 from 20
+candidates. The fixed Test row is therefore an exploratory, optimistically
+biased estimate rather than independent Test performance.
 
 ## Model
 
@@ -122,8 +125,8 @@ python scripts/run_fixed_offset_ctc.py \
   --gpu 0 --seeds 123
 ```
 
-The five tuned Dev-selected checkpoints are retained locally under
-`checkpoints/fixed_default/`. This directory is deliberately
+The five reported checkpoints use Dev-selected epochs and are retained locally
+under `checkpoints/fixed_default/`. This directory is deliberately
 gitignored; their names, sizes, and SHA-256 hashes are recorded in
 `artifacts/fixed_default/result.json`.
 

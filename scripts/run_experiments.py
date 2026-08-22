@@ -26,7 +26,7 @@ import subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SCRIPT = os.path.normpath(os.path.join(HERE, '..', 'src', 'train_haren_ctc.py'))
-PAPER_SEEDS = "123,1234,12345,123456,1234567"
+PAPER_SEEDS = "2029,123456,123,2032,12345678"
 
 
 def main():

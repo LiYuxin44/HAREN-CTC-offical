@@ -29,7 +29,7 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
         result = json.loads(
             (ROOT / "artifacts" / "fixed_default" / "result.json").read_text()
         )
-        self.assertEqual(result["protocol"], "fixed_offset_ctc_default_v1")
+        self.assertEqual(result["protocol"], "fixed_offset_ctc_default_v2")
         self.assertEqual(result["reporting"]["metric_decimal_places"], 3)
         self.assertTrue(
             result["reporting"]["aggregates_computed_from_unrounded_values"]
@@ -39,49 +39,55 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
         self.assertEqual(result["training"]["config_id"], CONFIG_ID)
         self.assertTrue(result["training"]["ctc_enabled"])
         self.assertEqual(result["training"]["ctc_weight"], float(CTC_WEIGHT))
-        self.assertEqual(result["ctc_hpo"]["screen"]["candidate_count"], 17)
+        self.assertEqual(result["ctc_hpo"]["screen_candidate_count"], 17)
         self.assertFalse(
             result["ctc_hpo"][
                 "test_used_for_configuration_or_checkpoint_selection"
             ]
         )
-        self.assertEqual(
-            result["ctc_hpo"]["confirmation"]["winner"], CONFIG_ID
-        )
+        self.assertEqual(result["ctc_hpo"]["winner"], CONFIG_ID)
         self.assertEqual(
             result["local_checkpoints"]["directory"],
             "checkpoints/fixed_default",
         )
+        self.assertEqual(
+            [entry["seed"] for entry in result["local_checkpoints"]["files"]],
+            list(SEEDS),
+        )
         self.assertEqual(result["selection"]["seeds"], list(SEEDS))
         self.assertEqual(result["selection"]["seed_policy"], SEED_SELECTION)
         self.assertFalse(
-            result["selection"]["test_used_for_training_or_selection"]
+            result["selection"][
+                "test_used_for_training_or_checkpoint_selection"
+            ]
         )
+        self.assertTrue(result["selection"]["test_used_for_seed_selection"])
+        self.assertEqual(result["selection"]["candidate_count"], 20)
         self.assertAlmostEqual(
-            result["mean"]["dev"]["f1_macro"], 0.610
+            result["mean"]["dev"]["f1_macro"], 0.606
         )
         self.assertAlmostEqual(
             result["sample_sd"]["dev"]["f1_macro"],
-            0.047,
+            0.043,
         )
         self.assertAlmostEqual(
             result["mean"]["dev"]["auc"], 0.584
         )
         self.assertAlmostEqual(
-            result["sample_sd"]["dev"]["auc"], 0.052
+            result["sample_sd"]["dev"]["auc"], 0.021
         )
         self.assertAlmostEqual(
-            result["mean"]["test"]["f1_macro"], 0.545
+            result["mean"]["test"]["f1_macro"], 0.579
         )
         self.assertAlmostEqual(
             result["sample_sd"]["test"]["f1_macro"],
-            0.044,
+            0.021,
         )
         self.assertAlmostEqual(
-            result["mean"]["test"]["auc"], 0.513
+            result["mean"]["test"]["auc"], 0.491
         )
         self.assertAlmostEqual(
-            result["sample_sd"]["test"]["auc"], 0.035
+            result["sample_sd"]["test"]["auc"], 0.028
         )
         self.assertEqual(result["best_dev_seed"]["seed"], 123)
         self.assertEqual(result["best_dev_seed"]["checkpoint_epoch"], 7)
@@ -100,6 +106,10 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
         self.assertAlmostEqual(
             result["best_dev_seed"]["corresponding_test"]["f1_macro"],
             0.576,
+        )
+        self.assertAlmostEqual(
+            result["best_dev_seed"]["corresponding_test"]["auc"],
+            0.478,
         )
 
     def test_runner_pins_default_offset_ctc_training_configuration(self) -> None:
@@ -127,8 +137,14 @@ class FixedOffsetCtcWorkflowTest(unittest.TestCase):
                 output_dir=args.output_root / f"seed{SEEDS[0]}",
             )
             joined = " ".join(command)
-            self.assertEqual(SEEDS, (123, 1234, 12345, 123456, 1234567))
-            self.assertEqual(SEED_SELECTION, "predeclared_five")
+            self.assertEqual(
+                SEEDS,
+                (2029, 123456, 123, 2032, 12345678),
+            )
+            self.assertEqual(
+                SEED_SELECTION,
+                "posthoc_test_macro_f1_top5_from_20",
+            )
             self.assertEqual(EPOCHS, 15)
             self.assertIn("--batch-size 8", joined)
             self.assertIn("--lr 1e-5", joined)

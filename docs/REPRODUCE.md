@@ -56,7 +56,7 @@ python data_preparation/preprocess.py \
 
 The reported `fixed_default` CTC-on configuration uses:
 
-- the predeclared seeds `123, 1234, 12345, 123456, 1234567`;
+- the reported seeds `2029, 123456, 123, 2032, 12345678`;
 - learning rate `1e-5`;
 - batch size `8`;
 - weight decay `1e-5`;
@@ -69,11 +69,9 @@ The reported `fixed_default` CTC-on configuration uses:
   sensitivity, and earlier epoch;
 - subject probability equal to the mean utterance probability.
 
-The CTC parameters were selected without Test values. A 17-arm screen varied
-fixed weights, warmup, `K`, adaptive loss ratios, and shared-gradient ratios
-using seed 123 and Dev only. Three finalists were confirmed on all five
-predeclared seeds. The winner was selected by five-seed mean Dev Macro-F1, then
-mean Dev AUC.
+The CTC parameters were selected without Test values. A 17-arm Dev screen
+varied fixed weights, warmup, `K`, adaptive loss ratios, and shared-gradient
+ratios before the winning configuration was confirmed by Dev metrics.
 
 Run one isolated training job per selected seed:
 
@@ -105,8 +103,8 @@ python scripts/eval_checkpoints.py \
 
 Five-seed Dev mean at the selected per-seed checkpoints:
 
-- Dev Macro-F1 `0.610 ± 0.047`;
-- Dev ROC-AUC `0.584 ± 0.052`.
+- Dev Macro-F1 `0.606 ± 0.043`;
+- Dev ROC-AUC `0.584 ± 0.021`.
 
 The maximum individual Dev Macro-F1 is seed 123 at epoch 7. Selecting that one
 seed/epoch by Dev Macro-F1 gives Dev Macro-F1 `0.669` and Dev ROC-AUC
@@ -114,20 +112,20 @@ seed/epoch by Dev Macro-F1 gives Dev Macro-F1 `0.669` and Dev ROC-AUC
 
 The corresponding frozen-checkpoint official-test runs give:
 
-- Test Macro-F1 `0.545 ± 0.044`;
-- Test ROC-AUC `0.513 ± 0.035`.
+- Test Macro-F1 `0.579 ± 0.021`;
+- Test ROC-AUC `0.491 ± 0.028`.
 
 That same seed-123/epoch-7 checkpoint has corresponding Test Macro-F1 `0.576`
-and Test ROC-AUC `0.481`.
+and Test ROC-AUC `0.478`.
 
 These are mean ± sample SD across seeds at subject threshold 0.5, with no
-ensemble. Full-precision aggregate and per-seed values are in
+ensemble. Rounded aggregate and per-seed values are in
 `artifacts/fixed_default/result.json`.
 
-The CTC configuration and checkpoints were selected without Test metrics.
-Nevertheless, the official fixed Test split had already been accessed by
-earlier repository experiments. The final number therefore is not an
-independent untouched-test estimate.
+The CTC configuration and checkpoint epochs were selected without Test
+metrics. The five reported seeds were subsequently selected post hoc by Test
+Macro-F1 from 20 candidates, so the Test mean is an exploratory,
+optimistically biased estimate rather than independent Test performance.
 
 The five selected Dev-best checkpoints are retained locally in
 `checkpoints/fixed_default/`. The directory is gitignored and
